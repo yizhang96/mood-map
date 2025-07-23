@@ -1,7 +1,8 @@
 // src/components/Circumplex.tsx
-import { useRef, useEffect } from 'react';
-import { useSubmitMood } from '../hooks/useSubmitMood';
+import { useRef, useEffect, useState } from 'react';
+import { useSubmitMood, getSessionId } from '../hooks/useSubmitMood';
 import { useDailyMoods } from '../hooks/useDailyMoods';
+import type { Mood } from '../hooks/useDailyMoods';
 
 interface Props {
   width?: number;
@@ -15,8 +16,10 @@ export default function Circumplex({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const moods = useDailyMoods();
   const submitMood = useSubmitMood();
+  const sessionId = getSessionId();
+  const [tempMood, setTempMood] = useState<Mood | null>(null);
 
-  // redraw circle, axes, and previous clicks
+  // redraw circle, axes, previous moods and temporary blue dot
   useEffect(() => {
     const ctx = canvasRef.current?.getContext('2d');
     if (!ctx) return;
@@ -61,6 +64,7 @@ export default function Circumplex({
 
     // plot previous moods (red dots, now radius 8)
     for (const m of moods) {
+      if (tempMood && m.session_id === sessionId) continue;
       const x = (m.valence / 2 + 0.5) * width;
       const y = (-m.arousal / 2 + 0.5) * height;
       ctx.beginPath();
@@ -70,17 +74,10 @@ export default function Circumplex({
       ctx.fill();
       ctx.globalAlpha = 1;
     }
-  }, [moods, width, height]);
 
-  // on click: draw a larger blue dot (radius 12) then save
-  const handlePointer = async (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    // draw the blue dot immediately (radius 12)
-    const ctx = canvasRef.current?.getContext('2d');
-    if (ctx) {
+    if (tempMood) {
+      const x = (tempMood.valence / 2 + 0.5) * width;
+      const y = (-tempMood.arousal / 2 + 0.5) * height;
       ctx.beginPath();
       ctx.arc(x, y, 12, 0, Math.PI * 2);
       ctx.fillStyle = '#3b82f6';
@@ -88,10 +85,18 @@ export default function Circumplex({
       ctx.fill();
       ctx.globalAlpha = 1;
     }
+  }, [moods, tempMood, width, height, sessionId]);
+
+  // on click: save mood and show blue dot temporarily
+  const handlePointer = async (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
 
     // compute valence/arousal and persist
     const valence = (x / width - 0.5) * 2;
     const arousal = -((y / height - 0.5) * 2);
+    setTempMood({ session_id: sessionId, valence, arousal, created_at: new Date().toISOString() });
     await submitMood(valence, arousal);
   };
 
