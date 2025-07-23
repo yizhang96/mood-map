@@ -1,9 +1,9 @@
 import { useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
-const SESSION_KEY = 'mood-map-session-id';
+export const SESSION_KEY = 'mood-map-session-id';
 
-function getSessionId(): string {
+export function getSessionId(): string {
   const cached = localStorage.getItem(SESSION_KEY);
   if (cached) return cached;
   const newId = crypto.randomUUID();
