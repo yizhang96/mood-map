@@ -26,18 +26,53 @@ export default function Circumplex({
     ctx.clearRect(0, 0, width, height);
 
     // outer circle
-    ctx.beginPath();
-    ctx.arc(width/2, height/2, width/2 - 2, 0, Math.PI * 2);
-    ctx.strokeStyle = '#4b5563';
-    ctx.lineWidth = 2;
-    ctx.stroke();
+    //ctx.beginPath();
+    //ctx.arc(width/2, height/2, width/2 - 2, 0, Math.PI * 2);
+    //ctx.strokeStyle = '#4b5563';
+    //ctx.lineWidth = 2;
+    //ctx.stroke();
 
     // axes
+
+    // --- Compute dynamic insets based on label size ---
+    const padding = 8;
+
+    // Measure top label
+    const topLabel = 'High Energy';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 16px sans-serif';
+    const topMetrics = ctx.measureText(topLabel);
+    const topDescent = topMetrics.actualBoundingBoxDescent;
+
+    // Measure bottom label
+    const bottomLabel = 'Low Energy';
+    const bottomMetrics = ctx.measureText(bottomLabel);
+    const bottomAscent = bottomMetrics.actualBoundingBoxAscent;
+
+    // Re-draw the labels so metrics apply to same font settings
+    ctx.fillText(topLabel, width / 2, 20);
+    ctx.fillText(bottomLabel, width / 2, height - 20);
+
+    // Vertical insets: start just below top label, and end just above bottom label
+    const topInset = 20 + topDescent + padding;
+    const bottomInset = height - 20 - bottomAscent - padding;
+
+    // Measure and inset for left/right labels unchanged
+    const negW = ctx.measureText('Negative').width;
+    const posW = ctx.measureText('Positive').width;
+    const leftInset = 20 + negW + padding;
+    const rightInset = width - (20 + posW + padding);
+
+    // --- Draw the shortened axes ---
     ctx.beginPath();
-    ctx.moveTo(width/2, 0);
-    ctx.lineTo(width/2, height);
-    ctx.moveTo(0, height/2);
-    ctx.lineTo(width, height/2);
+    // vertical axis
+    ctx.moveTo(width / 2, topInset);
+    ctx.lineTo(width / 2, bottomInset);
+    // horizontal axis
+    ctx.moveTo(leftInset, height / 2);
+    ctx.lineTo(rightInset, height / 2);
+
     ctx.strokeStyle = '#9ca3af';
     ctx.lineWidth = 1;
     ctx.stroke();
