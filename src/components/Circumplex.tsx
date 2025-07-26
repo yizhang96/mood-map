@@ -25,16 +25,8 @@ export default function Circumplex({
     if (!ctx) return;
     ctx.clearRect(0, 0, width, height);
 
-    // outer circle
-    //ctx.beginPath();
-    //ctx.arc(width/2, height/2, width/2 - 2, 0, Math.PI * 2);
-    //ctx.strokeStyle = '#4b5563';
-    //ctx.lineWidth = 2;
-    //ctx.stroke();
-
     // axes
-
-    // --- Compute dynamic insets based on label size ---
+    // Automatically adjust axis length based on label size ---
     const padding = 8;
 
     // Measure top label

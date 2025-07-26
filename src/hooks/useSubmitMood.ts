@@ -14,13 +14,25 @@ export function getSessionId(): string {
 /**
  * Inserts a new mood record with the current session_id.
  * Does not attempt to upsert—each click creates a new row.
+ * Accepts an optional `feeling_label` string to store alongside valence/arousal.
  */
 export function useSubmitMood() {
   const sessionId = getSessionId();
-  return useCallback(async (valence: number, arousal: number) => {
+  return useCallback(async (valence: number, arousal: number,
+    feeling_label?:string
+  ) => {
+    const payload: {
+        session_id: string;
+        valence: number;
+        arousal: number;
+        feeling_label?: string;
+    } = { session_id: sessionId, valence, arousal };
+    if (feeling_label) {
+        payload.feeling_label = feeling_label;
+    }
     const { error } = await supabase
       .from('moods')
-      .insert({ session_id: sessionId, valence, arousal });
+      .insert(payload);
     if (error) {
       console.error('Failed to insert mood:', error);
     }

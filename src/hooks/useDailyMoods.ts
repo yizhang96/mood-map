@@ -6,6 +6,7 @@ export interface Mood {
   session_id: string;
   valence: number;
   arousal: number;
+  feeling_label?: string;
   created_at: string;
 }
 
@@ -23,7 +24,7 @@ export function useDailyMoods(): Mood[] {
     const fetchInitial = async () => {
       const { data: rows, error } = await supabase
         .from('moods')
-        .select('session_id,valence,arousal,created_at')
+        .select('session_id,valence,arousal,feeling_label,created_at')
         .gte('created_at', start.toISOString());
       if (error) {
         console.error('Error fetching daily moods:', error);
@@ -41,9 +42,13 @@ export function useDailyMoods(): Mood[] {
 
     fetchInitial();
 
+    
+
     const channel = supabase
       .channel('mood_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'moods' }, (payload: { new: Mood }) => {
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'moods' }, 
+        (payload: { new: Mood }) => {
         const row = payload.new;
         const created = new Date(row.created_at);
         if (created >= start) {
