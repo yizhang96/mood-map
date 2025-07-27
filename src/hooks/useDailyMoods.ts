@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
-/** Simple mood shape */
+/** Define key variables */
 export interface Mood {
-  session_id: string;
-  valence: number;
+  session_id: string; //unique identifier for user
+  valence: number; 
   arousal: number;
-  feeling_label?: string;
+  feeling_label?: string; //allows users to enter their own emotion labels
   created_at: string;
 }
 
@@ -43,7 +43,7 @@ export function useDailyMoods(): Mood[] {
     fetchInitial();
 
     
-
+    //Talking to the database
     const channel = supabase
       .channel('mood_changes')
       .on('postgres_changes', 
