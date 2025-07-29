@@ -30,13 +30,19 @@ export default function Circumplex({
   const [hoverLabel, setHoverLabel] = useState<string | null>(null);
   const [hoverPos, setHoverPos]     = useState<{ x: number; y: number } | null>(null);
 
+  // holding the submitted mood for immediately rendering
+  const [localMood, setLocalMood] = useState<Mood | null>(null);
+
+  // tutorial toggle
+  const [showTutorial, setShowTutorial] = useState(false);
+
   // redraw everything whenever moods, pending, etc. change
   useEffect(() => {
     const ctx = canvasRef.current?.getContext('2d');
     if (!ctx) return;
     ctx.clearRect(0, 0, width, height);
 
-    // — draw axes & labels (your existing code) —
+    // — draw axes & labels —
     const padding = 8;
     const topLabel = 'High Energy';
     ctx.textAlign = 'center';
@@ -85,17 +91,17 @@ export default function Circumplex({
       ctx.globalAlpha = 1;
     }
 
-    // — plot your saved blue dot —
-    const self = moods.find(m => m.session_id === sessionId);
-    if (self) {
-      const x = (self.valence / 2 + 0.5) * width;
-      const y = (-self.arousal / 2 + 0.5) * height;
-      ctx.beginPath();
-      ctx.arc(x, y, 12, 0, Math.PI * 2);
-      ctx.fillStyle = '#3b82f6';
-      ctx.globalAlpha = 0.7;
-      ctx.fill();
-      ctx.globalAlpha = 1;
+    // — plot blue dot, preferring localMood if it exists —
+    const myMood = localMood ?? moods.find(m => m.session_id === sessionId);
+    if (myMood) {
+        const x = (myMood.valence / 2 + 0.5) * width;
+        const y = (-myMood.arousal / 2 + 0.5) * height;
+        ctx.beginPath();
+        ctx.arc(x, y, 12, 0, Math.PI * 2);
+        ctx.fillStyle = '#3b82f6';
+        ctx.globalAlpha = 0.7;
+        ctx.fill();
+        ctx.globalAlpha = 1;
     }
 
     // — plot pending blue dot while labeling —
@@ -107,7 +113,7 @@ export default function Circumplex({
       ctx.fill();
       ctx.globalAlpha = 1;
     }
-  }, [moods, tempMood, tempPos, width, height, sessionId]);
+  }, [moods, tempMood, tempPos, localMood, width, height, sessionId]);
 
   // on canvas click: set up pending mood & show input
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -125,6 +131,14 @@ export default function Circumplex({
   // on Enter: submit mood + optional label
   const handleInputKeyDown = async (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && tempMood) {
+      //capture the new mood locally (so that the map is immediately updated)
+      const newMood: Mood = {
+        ...tempMood,
+        feeling_label: inputValue.trim() || undefined,
+        created_at: new Date().toISOString(),
+      };
+      setLocalMood(newMood);
+
       await submitMood(
         tempMood.valence,
         tempMood.arousal,
@@ -140,6 +154,17 @@ export default function Circumplex({
     const rect = canvasRef.current!.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
+
+    // check local mood first; if exists, show the hover-label before refreshing
+    if (localMood && localMood.feeling_label) {
+             const lx = (localMood.valence / 2 + 0.5) * width;
+             const ly = (-localMood.arousal / 2 + 0.5) * height;
+             if (Math.hypot(mx - lx, my - ly) < 12) {
+               setHoverLabel(localMood.feeling_label);
+               setHoverPos({ x: e.clientX, y: e.clientY });
+               return;
+             }
+           }
 
     // find a mood whose dot radius (12px) contains the mouse
     const hit = moods.find(m => {
@@ -213,6 +238,64 @@ export default function Circumplex({
           }}
         >
           {hoverLabel}
+        </div>
+      )}
+
+      {/* Tutorial toggle */}
+        <button
+        onClick={() => setShowTutorial(prev => !prev)}
+        style={{
+          position: 'absolute',
+          top: 20,
+          left: 4,
+          background: 'rgba(255,255,255,0.9)',
+          border: '1px solid #333',
+          borderRadius: '4px',
+          padding: '4px 8px',
+          cursor: 'pointer',
+          zIndex: 20,
+          fontSize: '1.2em'
+        }}
+        >
+        💡Tutorial
+      </button>
+
+      {/* Unfolded tutorial panel */}
+      {showTutorial && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 60,
+            left: 4,
+            background: 'rgba(255,255,255,0.95)',
+            border: '1px solid #333',
+            borderRadius: '4px',
+            padding: '8px',
+            maxWidth: '240px',
+            fontSize: '0.9em',
+            zIndex: 20,
+            lineHeight: 1.4
+          }}
+        >
+        <strong>What is the Mood Map?</strong>
+            <ul style={{ paddingLeft: '1em', margin: '0.5em 0' }}>
+            <li>Science shows emotions can be mapped in 2D: valence (good–bad) and arousal (high–low energy).</li>
+            <li>This map helps track how you and others feel, using that 2D space.</li>
+            </ul>
+
+        <strong>How to use the Mood Map:</strong>
+            <ul style={{ paddingLeft: '1em', margin: '0.5em 0' }}>
+            <li>Click anywhere on the map to place your blue dot.</li>
+            <li>Type a word (or leave blank) and press Enter to save.</li>
+            <li>Hover over any dot to see its label.</li>
+            </ul>
+
+        <strong>What the colors mean:</strong>
+            <ul style={{ paddingLeft: '1em', margin: '0.5em 0' }}>
+            <li>Your moods = <span style={{ color: 'lightblue' }}>blue dots</span>.</li>
+            <li>Others' moods = <span style={{ color: 'pink' }}>pink dots</span>.</li>
+            </ul>
+
         </div>
       )}
     </div>
