@@ -43,29 +43,6 @@ export function useDailyMoods(): Mood[] {
     fetchInitial();
 
     
-    //Talking to the database
-    const channel = supabase
-      .channel('mood_changes')
-      .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'moods' }, 
-        (payload: { new: Mood }) => {
-        const row = payload.new;
-        const created = new Date(row.created_at);
-        if (created >= start) {
-          setData(prev => {
-            const existing = prev[row.session_id];
-            if (!existing || new Date(existing.created_at) <= created) {
-              return { ...prev, [row.session_id]: row };
-            }
-            return prev;
-          });
-        }
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, []);
 
   return Object.values(data);

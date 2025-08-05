@@ -46,7 +46,7 @@ export function useSubmitMood() {
       }
 
       // ➕ 2) insert the new one
-      const { data, error: insErr } = await supabase
+      const { error: insErr } = await supabase
         .from('moods')
         .insert(payload);
       if (insErr) console.error('Error inserting mood:', insErr);
