@@ -38,9 +38,23 @@ export default function Circumplex({
 
   // redraw everything whenever moods, pending, etc. change
   useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
     const ctx = canvasRef.current?.getContext('2d');
     if (!ctx) return;
     ctx.clearRect(0, 0, width, height);
+
+    // ——— HiDPI setup ———
+    const dpr = window.devicePixelRatio || 1;
+    // make the internal backing store bigger
+    canvas.width  = width  * dpr;
+    canvas.height = height * dpr;
+    // but keep it the same CSS size
+    canvas.style.width  = `${width}px`;
+    canvas.style.height = `${height}px`;
+    // scale all drawing operations back to CSS pixels
+    ctx.scale(dpr, dpr);
+    // ——————————————
 
     // — draw axes & labels —
     const padding = 8;
@@ -149,6 +163,35 @@ export default function Circumplex({
     }
   };
 
+  // add clickable submit button: do exactly what Enter does
+  const handleSubmitClick = async () => {
+    if (!tempMood || !tempPos) return;
+    const newMood: Mood = {
+      ...tempMood,
+      feeling_label: inputValue.trim() || undefined,
+      created_at: new Date().toISOString(),
+    };
+    // show immediately
+    setLocalMood(newMood);
+    // persist
+    await submitMood(
+      newMood.valence,
+      newMood.arousal,
+      newMood.feeling_label
+    );
+    // clear the “pending” UI
+    setTempMood(null);
+    setTempPos(null);
+    setInputValue('');
+  };
+
+  // add cancel button: drop the pending mood
+  const handleCancelClick = () => {
+    setTempMood(null);
+    setTempPos(null);
+    setInputValue('');
+  };
+
   // track hover for tooltips
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -189,10 +232,11 @@ export default function Circumplex({
     <div style={{ position: 'relative', display: 'inline-block' }}>
       <canvas
         ref={canvasRef}
-        width={width}
-        height={height}
         style={{
+          width: `${width}px`,
+          height: `${height}px`,
           border: '2px solid #333',
+          borderRadius: '30px',
           background: '#fff',
           display: 'block',
           margin: '1rem auto',
@@ -203,23 +247,56 @@ export default function Circumplex({
         onPointerLeave={handlePointerLeave}
       />
 
-      {/* Text entry box */}
-      {tempMood && tempPos && (
-        <input
-          autoFocus
-          value={inputValue}
-          onChange={e => setInputValue(e.target.value)}
-          onKeyDown={handleInputKeyDown}
-          style={{
+      {/* Text entry + action buttons */}
+    {tempMood && tempPos && (
+        <div
+        style={{
             position: 'absolute',
             left: tempPos.x,
-            top: tempPos.y,
+            top:  tempPos.y,
             transform: 'translate(-50%, -120%)',
-            padding: '4px 8px',
+            display: 'flex',
+            gap: '4px',
+            alignItems: 'center',
+            background: 'rgba(255,255,255,0.9)',
+            padding: '4px',
+            borderRadius: '4px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+        }}
+        >
+        <input
+            autoFocus
+            value={inputValue}
+            onChange={e => setInputValue(e.target.value)}
+            onKeyDown={handleInputKeyDown}
+            placeholder="Label mood (optional)"
+            style={{
             fontSize: '0.9em',
-          }}
+            padding: '2px 4px',
+            }}
         />
-      )}
+        <button
+            onClick={handleSubmitClick}
+            style={{
+            fontSize: '0.8em',
+            padding: '2px 6px',
+            cursor: 'pointer',
+            }}
+        >
+            Save
+        </button>
+        <button
+            onClick={handleCancelClick}
+            style={{
+            fontSize: '0.8em',
+            padding: '2px 6px',
+            cursor: 'pointer',
+            }}
+        >
+            ✕
+        </button>
+        </div>
+    )}
 
       {/* Hover tooltip */}
       {hoverLabel && hoverPos && (
@@ -246,11 +323,11 @@ export default function Circumplex({
         onClick={() => setShowTutorial(prev => !prev)}
         style={{
           position: 'absolute',
-          top: 20,
-          left: 4,
+          top: 25,
+          left: 8,
           background: 'rgba(255,255,255,0.9)',
           border: '1px solid #333',
-          borderRadius: '4px',
+          borderRadius: '30px',
           padding: '4px 8px',
           cursor: 'pointer',
           zIndex: 20,
@@ -265,11 +342,11 @@ export default function Circumplex({
         <div
           style={{
             position: 'absolute',
-            top: 60,
-            left: 4,
+            top: 65,
+            left: 8,
             background: 'rgba(255,255,255,0.95)',
             border: '1px solid #333',
-            borderRadius: '4px',
+            borderRadius: '15px',
             padding: '8px',
             maxWidth: '240px',
             fontSize: '0.9em',
@@ -285,7 +362,7 @@ export default function Circumplex({
 
         <strong>How to use the Mood Map:</strong>
             <ul style={{ paddingLeft: '1em', margin: '0.5em 0' }}>
-            <li>Click anywhere on the map to place your blue dot.</li>
+            <li>Click anywhere on the map to place your mood.</li>
             <li>Type a word (or leave blank) and press Enter to save.</li>
             <li>Hover over any dot to see its label.</li>
             </ul>
