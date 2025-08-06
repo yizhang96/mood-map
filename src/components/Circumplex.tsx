@@ -230,7 +230,12 @@ export default function Circumplex({
   };
 
   return (
-    <div style={{ position: 'relative', display: 'inline-block' }}>
+    <div style={{ 
+        position: 'relative', 
+        display: 'block',
+        maxWidth: `${width}px`,
+        margin: 'auto',
+        }}>
       <canvas
         ref={canvasRef}
         style={{
@@ -241,7 +246,7 @@ export default function Circumplex({
           background: '#fff',
           display: 'block',
           margin: '1rem auto',
-          touchAction: 'none',
+          touchAction: 'auto',
         }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -270,17 +275,21 @@ export default function Circumplex({
             value={inputValue}
             onChange={e => setInputValue(e.target.value)}
             onKeyDown={handleInputKeyDown}
-            placeholder="Label mood (optional)"
+            placeholder="Add mood label (optional)"
             style={{
-            fontSize: '0.9em',
-            padding: '2px 4px',
+                fontSize: '1em',
+                minWidth: '80px',
+                minHeight: '44px',
+                padding: '8px'
             }}
         />
         <button
             onClick={handleSubmitClick}
             style={{
-            fontSize: '0.8em',
-            padding: '2px 6px',
+            fontSize: '1em',
+            padding: '8px 12px',
+            minHeight: '44px',
+            touchAction: 'manipulation',
             cursor: 'pointer',
             }}
         >
@@ -289,8 +298,10 @@ export default function Circumplex({
         <button
             onClick={handleCancelClick}
             style={{
-            fontSize: '0.8em',
-            padding: '2px 6px',
+            fontSize: '1em',
+            padding: '8px 12px',
+            minHeight: '44px',
+            touchAction: 'manipulation',
             cursor: 'pointer',
             }}
         >
