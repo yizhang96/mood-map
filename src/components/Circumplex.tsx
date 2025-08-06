@@ -1,4 +1,5 @@
 // src/components/Circumplex.tsx
+import React from 'react';
 import { useRef, useEffect, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { useSubmitMood, getSessionId } from '../hooks/useSubmitMood';
