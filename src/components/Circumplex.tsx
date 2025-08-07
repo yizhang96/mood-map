@@ -40,40 +40,66 @@ export default function Circumplex({
   //define functions for pointer actions (for touchscreen devices)
   //A double-click would place an emotion
   /** Show label on single click/tap */
+  /** Show label on single click/tap (canvas-relative) */
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const rect = canvasRef.current!.getBoundingClientRect();
-    const mx   = e.clientX - rect.left;
-    const my   = e.clientY - rect.top;
-
-    // only consider moods that actually have labels
-    const all = [
-      ...moods.filter(m => m.feeling_label),
-      ...(localMood && localMood.feeling_label ? [localMood] : [])
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+  
+    // 1️⃣ Measure on-screen CSS size & position
+    const rect = canvas.getBoundingClientRect();
+    const cw   = rect.width;
+    const ch   = rect.height;
+  
+    // 2️⃣ Convert the tap to canvas-local coords
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+  
+    // 3️⃣ Gather only moods with labels
+    const labeled: Mood[] = [
+      ...moods.filter(m => !!m.feeling_label),
+      ...(localMood && localMood.feeling_label ? [localMood] : []),
     ];
-
-    // hit‐test with a 12px radius
-    const hit = all.find(m => {
-      const x0 = (m.valence  / 2 + 0.5) * width;
-      const y0 = (-m.arousal / 2 + 0.5) * height;
+  
+    // 4️⃣ Hit-test in that canvas space
+    const hit = labeled.find(m => {
+      const x0 = (m.valence  / 2 + 0.5) * cw;
+      const y0 = (-m.arousal / 2 + 0.5) * ch;
       return Math.hypot(mx - x0, my - y0) < 12;
     });
-
+  
     if (hit) {
+      // 5️⃣ Compute the dot’s center *relative* to the canvas
+      const relX = (hit.valence  / 2 + 0.5) * cw;
+      const relY = (-hit.arousal / 2 + 0.5) * ch;
+  
       setHoverLabel(hit.feeling_label!);
-      setHoverPos({ x: e.clientX, y: e.clientY });
+      setHoverPos({ x: relX, y: relY });
+    } else {
+      setHoverLabel(null);
     }
   };
 
   /** Place a new mood on double-click/tap */
+  /** Place a new mood on double-click/tap */
   const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    e.preventDefault();  // stop Safari’s default double-tap zoom
-    const rect = canvasRef.current!.getBoundingClientRect();
-    const x    = e.clientX - rect.left;
-    const y    = e.clientY - rect.top;
-
-    const valence = (x / width  - 0.5) * 2;
-    const arousal = -((y / height - 0.5) * 2);
-
+    e.preventDefault();      // stop Safari’s default double-tap zoom
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+  
+    // 1️⃣ measure actual on-screen size
+    const rect = canvas.getBoundingClientRect();
+    const cw   = rect.width;
+    const ch   = rect.height;
+  
+    // 2️⃣ compute click/tap pos
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+  
+    // 3️⃣ derive valence/arousal from that real size
+    const valence = (x / cw - 0.5) * 2;
+    const arousal = -((y / ch - 0.5) * 2);
+  
+    // 4️⃣ set up your pending mood UI
     setTempMood({
       session_id: sessionId,
       valence,
@@ -86,98 +112,99 @@ export default function Circumplex({
   
 
   // redraw everything whenever moods, pending, etc. change
-  useEffect(() => {
+  // inside your Circumplex component, replace your existing useEffect(...) with this:
+
+useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvasRef.current?.getContext('2d');
+    const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.clearRect(0, 0, width, height);
-
-    // ——— HiDPI setup ———
+  
+    // 1️⃣ Measure *actual* CSS size of the canvas
+    const { width: cw, height: ch } = canvas.getBoundingClientRect();
+  
+    // 2️⃣ Hi-DPI backing store
     const dpr = window.devicePixelRatio || 1;
-    // make the internal backing store bigger
-    canvas.width  = width  * dpr;
-    canvas.height = height * dpr;
-    // but keep it the same CSS size
-    canvas.style.width  = `${width}px`;
-    canvas.style.height = `${height}px`;
-    // scale all drawing operations back to CSS pixels
+    canvas.width  = cw * dpr;
+    canvas.height = ch * dpr;
     ctx.scale(dpr, dpr);
-    // ——————————————
-
-    // — draw axes & labels —
+  
+    // 3️⃣ Clear the full area
+    ctx.clearRect(0, 0, cw, ch);
+  
+    // ——— draw axes & labels using cw/ch instead of width/height ———
+  
+    // compute label insets exactly as before...
     const padding = 8;
-    const topLabel = 'High Energy';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
     ctx.font = 'bold 16px sans-serif';
-    const topDescent = ctx.measureText(topLabel).actualBoundingBoxDescent;
-    const bottomLabel = 'Low Energy';
-    const bottomAscent = ctx.measureText(bottomLabel).actualBoundingBoxAscent;
-    ctx.fillText(topLabel, width/2, 20);
-    ctx.fillText(bottomLabel, width/2, height - 20);
-    const topInset    = 20 + topDescent + padding;
-    const bottomInset = height - 20 - bottomAscent - padding;
-    const negW  = ctx.measureText('Negative').width;
-    const posW  = ctx.measureText('Positive').width;
-    const leftInset  = 20 + negW + padding;
-    const rightInset = width - (20 + posW + padding);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const topDescent    = ctx.measureText('High Energy').actualBoundingBoxDescent;
+    const bottomAscent  = ctx.measureText('Low Energy').actualBoundingBoxAscent;
+    const topInset      = 20 + topDescent + padding;
+    const bottomInset   = ch - 20 - bottomAscent - padding;
+    const negW          = ctx.measureText('Negative').width;
+    const posW          = ctx.measureText('Positive').width;
+    const leftInset     = 20 + negW + padding;
+    const rightInset    = cw - (20 + posW + padding);
+  
+    // draw axes
     ctx.beginPath();
-    ctx.moveTo(width/2, topInset);
-    ctx.lineTo(width/2, bottomInset);
-    ctx.moveTo(leftInset, height/2);
-    ctx.lineTo(rightInset, height/2);
+    ctx.moveTo(cw/2,      topInset);
+    ctx.lineTo(cw/2,      bottomInset);
+    ctx.moveTo(leftInset, ch/2);
+    ctx.lineTo(rightInset,ch/2);
     ctx.strokeStyle = '#9ca3af';
     ctx.lineWidth   = 1;
     ctx.stroke();
-    ctx.fillStyle   = '#333';
-    ctx.font        = 'bold 16px sans-serif';
-    ctx.textAlign   = 'center';
-    ctx.textBaseline= 'middle';
-    ctx.fillText('High Energy', width/2, 20);
-    ctx.fillText('Low Energy', width/2, height - 20);
-    ctx.textAlign = 'left';
-    ctx.fillText('Negative', 20, height/2);
-    ctx.textAlign = 'right';
-    ctx.fillText('Positive', width - 20, height/2);
-
-    // — plot others’ red dots —
+  
+    // draw labels
+    ctx.fillStyle     = '#333';
+    ctx.textAlign     = 'center';
+    ctx.textBaseline  = 'middle';
+    ctx.fillText('High Energy', cw/2,      20);
+    ctx.fillText('Low Energy',  cw/2,      ch - 20);
+    ctx.textAlign     = 'left';
+    ctx.fillText('Negative',    20,        ch/2);
+    ctx.textAlign     = 'right';
+    ctx.fillText('Positive',    cw - 20,   ch/2);
+  
+    // ——— plot everyone’s red dots (radius 8) ———
     for (const m of moods) {
       if (m.session_id === sessionId) continue;
-      const x = (m.valence / 2 + 0.5) * width;
-      const y = (-m.arousal / 2 + 0.5) * height;
+      const x = (m.valence  / 2 + 0.5) * cw;
+      const y = (-m.arousal / 2 + 0.5) * ch;
       ctx.beginPath();
-      ctx.arc(x, y, 8, 0, Math.PI * 2);
-      ctx.fillStyle = '#ef4444';
+      ctx.arc(x, y, 8, 0, Math.PI*2);
+      ctx.fillStyle   = '#ef4444';
       ctx.globalAlpha = 0.35;
       ctx.fill();
       ctx.globalAlpha = 1;
     }
-
-    // — plot blue dot, preferring localMood if it exists —
+  
+    // ——— plot *your* saved blue dot (radius 12) ———
     const myMood = localMood ?? moods.find(m => m.session_id === sessionId);
     if (myMood) {
-        const x = (myMood.valence / 2 + 0.5) * width;
-        const y = (-myMood.arousal / 2 + 0.5) * height;
-        ctx.beginPath();
-        ctx.arc(x, y, 12, 0, Math.PI * 2);
-        ctx.fillStyle = '#3b82f6';
-        ctx.globalAlpha = 0.7;
-        ctx.fill();
-        ctx.globalAlpha = 1;
-    }
-
-    // — plot pending blue dot while labeling —
-    if (tempMood && tempPos) {
+      const x = (myMood.valence  / 2 + 0.5) * cw;
+      const y = (-myMood.arousal / 2 + 0.5) * ch;
       ctx.beginPath();
-      ctx.arc(tempPos.x, tempPos.y, 12, 0, Math.PI * 2);
-      ctx.fillStyle = '#3b82f6';
+      ctx.arc(x, y, 12, 0, Math.PI*2);
+      ctx.fillStyle   = '#3b82f6';
       ctx.globalAlpha = 0.7;
       ctx.fill();
       ctx.globalAlpha = 1;
     }
-  }, [moods, tempMood, tempPos, localMood, width, height, sessionId]);
-
+  
+    // ——— plot the *pending* blue dot while labeling (radius 12) ———
+    if (tempMood && tempPos) {
+      ctx.beginPath();
+      ctx.arc(tempPos.x, tempPos.y, 12, 0, Math.PI*2);
+      ctx.fillStyle   = '#3b82f6';
+      ctx.globalAlpha = 0.7;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  
+  }, [moods, localMood, tempMood, tempPos, sessionId]);
 
   // on Enter: submit mood + optional label
   const handleInputKeyDown = async (e: KeyboardEvent<HTMLInputElement>) => {
@@ -230,66 +257,79 @@ export default function Circumplex({
   };
 
   // track hover for tooltips
-  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const rect = canvasRef.current!.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+  // src/components/Circumplex.tsx
+// …
 
-    // check local mood first; if exists, show the hover-label before refreshing
-    if (localMood && localMood.feeling_label) {
-             const lx = (localMood.valence / 2 + 0.5) * width;
-             const ly = (-localMood.arousal / 2 + 0.5) * height;
-             if (Math.hypot(mx - lx, my - ly) < 12) {
-               setHoverLabel(localMood.feeling_label);
-               setHoverPos({ x: e.clientX, y: e.clientY });
-               return;
-             }
-           }
-
-    // find a mood whose dot radius (12px) contains the mouse
-    const hit = moods.find(m => {
-      const dx = mx - ((m.valence / 2 + 0.5) * width);
-      const dy = my - (-(m.arousal / 2 - 0.5) * height);
-      return Math.hypot(dx, dy) < 12 && m.feeling_label;
+/** track hover for tooltips, always next to the dot’s true screen center */
+const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+  
+    // 1️⃣ get on‐screen CSS size
+    const { width: cw, height: ch } = canvas.getBoundingClientRect();
+  
+    // 2️⃣ pointer in canvas coords (for hit test)
+    const mx = e.clientX - canvas.getBoundingClientRect().left;
+    const my = e.clientY - canvas.getBoundingClientRect().top;
+  
+    // 3️⃣ build a list of all labelled moods
+    const labeled: Mood[] = [
+      ...moods.filter(m => !!m.feeling_label),
+      ...(localMood && localMood.feeling_label ? [localMood] : []),
+    ];
+  
+    // 4️⃣ hit‐test
+    const hit = labeled.find(m => {
+      const x0 = (m.valence  / 2 + 0.5) * cw;
+      const y0 = (-m.arousal / 2 + 0.5) * ch;
+      return Math.hypot(mx - x0, my - y0) < 12;
     });
-
+  
     if (hit) {
+      // 5️⃣ compute _canvas‐relative_ coords of the center
+      const relX = (hit.valence  / 2 + 0.5) * cw;
+      const relY = (-hit.arousal / 2 + 0.5) * ch;
+  
       setHoverLabel(hit.feeling_label!);
-      setHoverPos({ x: e.clientX, y: e.clientY });
+      setHoverPos({ x: relX, y: relY });
     } else {
       setHoverLabel(null);
     }
   };
-
+  
   const handlePointerLeave = () => {
     setHoverLabel(null);
   };
-
-
+  
 
   return (
     <div style={{ 
         position: 'relative', 
         display: 'block',
+        width: '100%',
         maxWidth: `${width}px`,
-        margin: 'auto',
+        aspectRatio: '1 / 1',
+        margin: '1rem auto',
         }}>
       <canvas
         ref={canvasRef}
+        width = {width}
+        height = {height}
         style={{
           width: `100%`,
-          height: `auto`,
+          height: `100%`,
           border: '2px solid #333',
           borderRadius: '30px',
           background: '#fff',
           display: 'block',
           margin: '1rem auto',
-          touchAction: 'manipulation',
+          touchAction: 'auto',
           userSelect: 'none',
+          WebkitTouchCallout: 'none'
         }}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
-        onPointerMove={handlePointerMove}
+        onPointerMove={handlePointerMove} //desktop only
         onPointerLeave={handlePointerLeave}
       />
 
@@ -354,7 +394,7 @@ export default function Circumplex({
       {hoverLabel && hoverPos && (
         <div
           style={{
-            position: 'fixed',
+            position: 'absolute',
             left: hoverPos.x + 10,
             top: hoverPos.y + 10,
             background: 'rgba(0,0,0,0.75)',
@@ -363,7 +403,9 @@ export default function Circumplex({
             borderRadius: 4,
             pointerEvents: 'none',
             fontSize: '0.8em',
-            zIndex: 10,
+            zIndex: 20,
+            whiteSpace: 'nowrap',
+            transform: 'translate(0,0)',
           }}
         >
           {hoverLabel}
