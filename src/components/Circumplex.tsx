@@ -27,6 +27,10 @@ export default function Circumplex({
   // input value for the label
   const [inputValue, setInputValue] = useState('');
 
+  // track a long-press timer (for touchscreen devices)
+  let longPressTimer: ReturnType<typeof setTimeout> | null = null
+  const LONG_PRESS_DURATION = 500; 
+
   // hover tooltip state
   const [hoverLabel, setHoverLabel] = useState<string | null>(null);
   const [hoverPos, setHoverPos]     = useState<{ x: number; y: number } | null>(null);
@@ -36,6 +40,66 @@ export default function Circumplex({
 
   // tutorial toggle
   const [showTutorial, setShowTutorial] = useState(false);
+
+  //define functions for pointer actions (for touchscreen devices)
+  // 1️⃣ Pointer down: start long-press (touch) or immediate click (mouse)
+  function handlePointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
+    // clear any existing tooltip
+    setHoverLabel(null);
+  
+    if (e.pointerType === 'touch') {
+      longPressTimer = setTimeout(() => {
+        handleCanvasClick(e);
+      }, LONG_PRESS_DURATION);
+    } else {
+      handleCanvasClick(e);
+    }
+  }
+  
+  // 2️⃣ Pointer up: cancel the timer so short taps don’t fire
+  function handlePointerUp() {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  }
+  
+  // 3️⃣ Unified click logic: show label if tapping a dot, else place a new mood
+  function handleCanvasClick(e: React.PointerEvent<HTMLCanvasElement>) {
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+  
+    // — hit-test existing labeled dots first —
+    const allLabeled = [
+      ...moods.filter(m => m.feeling_label),
+      ...(localMood && localMood.feeling_label ? [localMood] : [])
+    ];
+    for (const m of allLabeled) {
+      const x0 = (m.valence  / 2 + 0.5) * width;
+      const y0 = (-m.arousal / 2 + 0.5) * height;
+      if (Math.hypot(x - x0, y - y0) < 12) {
+        setHoverLabel(m.feeling_label!);
+        setHoverPos({ x: e.clientX, y: e.clientY });
+        setTempMood(null);
+        setTempPos(null);
+        return;
+      }
+    }
+  
+    // — otherwise start a new mood placement —
+    const valence = (x / width  - 0.5) * 2;
+    const arousal = -((y / height - 0.5) * 2);
+    setTempMood({
+      session_id: sessionId,
+      valence,
+      arousal,
+      created_at: new Date().toISOString(),
+    });
+    setTempPos({ x, y });
+    setInputValue('');
+  }
+
 
   // redraw everything whenever moods, pending, etc. change
   useEffect(() => {
@@ -130,18 +194,6 @@ export default function Circumplex({
     }
   }, [moods, tempMood, tempPos, localMood, width, height, sessionId]);
 
-  // on canvas click: set up pending mood & show input
-  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const rect = canvasRef.current!.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const valence = (x / width - 0.5) * 2;
-    const arousal = -((y / height - 0.5) * 2);
-
-    setTempMood({ session_id: sessionId, valence, arousal, created_at: new Date().toISOString() });
-    setTempPos({ x, y });
-    setInputValue('');
-  };
 
   // on Enter: submit mood + optional label
   const handleInputKeyDown = async (e: KeyboardEvent<HTMLInputElement>) => {
@@ -249,6 +301,7 @@ export default function Circumplex({
           touchAction: 'auto',
         }}
         onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
         onPointerMove={handlePointerMove}
         onPointerLeave={handlePointerLeave}
       />
