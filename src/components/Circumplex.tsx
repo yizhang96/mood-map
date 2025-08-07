@@ -26,6 +26,8 @@ export default function Circumplex({
   const [tempPos, setTempPos] = useState<{ x: number; y: number } | null>(null);
   // input value for the label
   const [inputValue, setInputValue] = useState('');
+  // dynamically changing entry box position
+  const [inputPos, setInputPos] = useState<{ x: number; y: number } | null>(null);
 
   // hover tooltip state
   const [hoverLabel, setHoverLabel] = useState<string | null>(null);
@@ -37,6 +39,10 @@ export default function Circumplex({
 
   // tutorial toggle
   const [showTutorial, setShowTutorial] = useState(false);
+
+  // your desired box size:
+  const BOX_W = 120;  // a bit smaller than before
+  const BOX_H = 40;
 
   //define function for mapping valence-arousal to colors
   /** 
@@ -139,14 +145,22 @@ function moodToQuadColor(v: number, a: number): string {
     const arousal = -((y / ch - 0.5) * 2);
   
     // 4️⃣ set up your pending mood UI
-    setTempMood({
-      session_id: sessionId,
-      valence,
-      arousal,
-      created_at: new Date().toISOString(),
-    });
+    // after you compute raw x,y from the event…
+    setTempMood({ session_id:sessionId, valence, arousal, created_at: new Date().toISOString() });
     setTempPos({ x, y });
-    setInputValue('');
+
+    // initial “above” position:
+    let bx = x;
+    let by = y -  (BOX_H/2 + 16);  // 16px gap above tap
+
+    // clamp horizontally:
+    bx = Math.max(BOX_W/2 + 8, Math.min(cw - BOX_W/2 - 8, bx));
+
+    // clamp vertically so it never runs off top or bottom
+    by = Math.max(8 + BOX_H/2, Math.min(ch - BOX_H/2 - 8, by));
+
+    // save it
+    setInputPos({ x: bx, y: by });
   };
   
 
@@ -258,7 +272,7 @@ useEffect(() => {
         ctx.stroke();
       }
   
-  }, [moods, localMood, tempMood, tempPos, sessionId]);
+    }, [moods, localMood, tempMood, tempPos, inputPos, hoveredMood, sessionId]);
 
 
   // on Enter: submit mood + optional label
@@ -398,61 +412,59 @@ const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
       />
 
       {/* Text entry + action buttons */}
-    {tempMood && tempPos && (
-        <div
-        style={{
-            position: 'absolute',
-            left: tempPos.x,
-            top:  tempPos.y,
-            transform: 'translate(-50%, -120%)',
-            display: 'flex',
-            gap: '4px',
-            alignItems: 'center',
-            background: 'rgba(255,255,255,0.9)',
-            padding: '4px',
-            borderRadius: '4px',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-        }}
-        >
-        <input
-            autoFocus
-            value={inputValue}
-            onChange={e => setInputValue(e.target.value)}
-            onKeyDown={handleInputKeyDown}
-            placeholder="Add mood label (optional)"
-            style={{
-                fontSize: '1em',
-                minWidth: '80px',
-                minHeight: '44px',
-                padding: '8px'
-            }}
-        />
-        <button
-            onClick={handleSubmitClick}
-            style={{
-            fontSize: '1em',
-            padding: '8px 12px',
-            minHeight: '44px',
-            touchAction: 'manipulation',
-            cursor: 'pointer',
-            }}
-        >
-            Save
-        </button>
-        <button
-            onClick={handleCancelClick}
-            style={{
-            fontSize: '1em',
-            padding: '8px 12px',
-            minHeight: '44px',
-            touchAction: 'manipulation',
-            cursor: 'pointer',
-            }}
-        >
-            ✕
-        </button>
-        </div>
-    )}
+      {tempMood && inputPos && (
+  <div
+    style={{
+      position:     'absolute',
+      left:         inputPos.x,
+      top:          inputPos.y,
+      transform:    'translate(-50%, -50%)',
+      display:      'flex',
+      gap:          '4px',
+      background:   'rgba(255,255,255,0.9)',
+      padding:      '4px 6px',
+      borderRadius: '4px',
+      boxShadow:    '0 1px 4px rgba(0,0,0,0.15)',
+      zIndex:       10,
+    }}
+  >
+    <input
+      autoFocus
+      value={inputValue}
+      onChange={e => setInputValue(e.target.value)}
+      onKeyDown={handleInputKeyDown}
+      placeholder="Label (opt.)"
+      style={{
+        fontSize: '0.9em',
+        padding:  '4px 6px',
+        width:    `${BOX_W - 40}px`,  // leave room for two small buttons
+        height:   '32px',
+      }}
+    />
+    <button
+      onClick={handleSubmitClick}
+      style={{
+        fontSize: '0.9em',
+        padding:  '4px 8px',
+        height:   '32px',
+        cursor:   'pointer',
+      }}
+    >
+      ✓
+    </button>
+    <button
+      onClick={handleCancelClick}
+      style={{
+        fontSize: '0.9em',
+        padding:  '4px 8px',
+        height:   '32px',
+        cursor:   'pointer',
+      }}
+    >
+      ✕
+    </button>
+  </div>
+)}
 
       {/* Hover tooltip */}
       {hoverLabel && hoverPos && (() => {
@@ -520,12 +532,12 @@ const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
         <div
             style={{
             position:       'fixed',
-            bottom:         70,                     // 64px up
+            bottom:         70,                   
             left:           16,
-            background:     'rgba(255,255,255,0.95)',
+            background:     'rgba(255, 255, 255, 0.85)',
             border:         '1px solid #333',
-            borderRadius:   '12px',
-            padding:        '12px',
+            borderRadius:   '30px',
+            padding:        '30px',
             maxWidth:       '280px',
             fontSize:       '0.9em',
             fontFamily:     'Helvetica, Arial, sans-serif',
@@ -542,15 +554,16 @@ const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
 
             <strong>How to use the Mood Map:</strong>
             <ul style={{ paddingLeft: '1em', margin: '0.5em 0' }}>
-            <li>Click anywhere on the map to place your mood.</li>
+            <li>Double-click anywhere on the map to place your mood.</li>
             <li>Type a word (or leave blank) and press Enter to save.</li>
             <li>Single-click/tap on any dot to see its label.</li>
             </ul>
 
-            <strong>What the colors mean:</strong>
+            <strong>What do the dots represent:</strong>
             <ul style={{ paddingLeft: '1em', margin: '0.5em 0' }}>
-            <li><span style={{ color: '#3b82f6' }}>Blue dots</span> = your moods</li>
-            <li><span style={{ color: '#fca5a5' }}>Pink dots</span> = others’ moods</li>
+            <li><span style={{ }}>Large dot</span> = your mood.</li>
+            <li><span style={{ }}>Small dots</span> = others’ moods.</li>
+            <li><span style={{ }}>Click any dot to see the mood label.</span></li>
             </ul>
         </div>
       )}

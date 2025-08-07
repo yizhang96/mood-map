@@ -1,69 +1,46 @@
-# React + TypeScript + Vite
+# Mood Map 🧠💬
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+**Mood Map** is an interactive, web-based tool that lets users log and visualize their emotions in real time.
 
-Currently, two official plugins are available:
+Inspired by a physical mood map created by the [Flourish Science team](https://www.myflourish.ai/mood-map) and the [circumplex model of affect](https://psu.pb.unizin.org/psych425/chapter/circumplex-models/), it maps feelings along two key psychological dimensions:  
+- **Valence** (how pleasant or unpleasant an emotion feels)  
+- **Arousal** (how energized or calm the emotion is)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+Each user can place a dot anywhere on the 2D canvas to represent their current emotional state, optionally adding a label. Hovering/tapping reveals the label, and dots can be updated to reflect changing moods—encouraging emotional awareness and reflection.
 
-## Expanding the ESLint configuration
+## Why Mood Map?
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+Emotions are complex but not random. Decades of affective science show that most emotions can be organized along the **valence-arousal plane** (Russell, 1980). The Mood Map builds on this science to:
 
-```js
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- Help users check in with their feelings in a structured yet flexible way  
+- Enable groups (e.g., classrooms, teams) to visualize the collective emotional landscape  
+- Offer a low-barrier entry into emotional tracking—no need to pick from predefined categories
 
-      // Remove tseslint.configs.recommended and replace with this
-      ...tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      ...tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      ...tseslint.configs.stylisticTypeChecked,
+## Features
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+- 🟦 Real-time mood logging via an interactive canvas  
+- ✍️ Optional labeling of emotional states  
+- 🧠 Grounded in psychological research on emotion and affect  
+- 🌍 Built to support group-based emotional visibility (e.g., in classrooms or workshops)
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Live Demo
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+👉 [Try the Mood Map](https://yizhang96.github.io/mood-map/)
 
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## Built With
+
+- **React + TypeScript**: Frontend framework and type-safe logic  
+- **Vite**: Lightning-fast dev environment with hot module replacement  
+- **Tailwind CSS**: Utility-first styling  
+- **Supabase**: Backend-as-a-service for storing mood data (optional)
+
+---
+
+## Developer Notes
+
+This project uses a minimal setup for React + Vite with ESLint support.
+
+### Plugins
+
+- [`@vitejs/plugin-react`](https://github.com/vitejs/vite-plugin-react) (Babel-based)
+- [`@vitejs/plugin-react-swc`](https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react-swc) (SWC-based)
