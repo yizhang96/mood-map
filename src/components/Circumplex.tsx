@@ -33,48 +33,87 @@ export default function Circumplex({
 
   // holding the submitted mood for immediately rendering
   const [localMood, setLocalMood] = useState<Mood | null>(null);
+  const [hoveredMood, setHoveredMood] = useState<Mood | null>(null)
 
   // tutorial toggle
   const [showTutorial, setShowTutorial] = useState(false);
 
+  //define function for mapping valence-arousal to colors
+  /** 
+ * Quadrant color‐blend: 
+ *   (v,a)∈[−1..+1]² → color between UL=red, UR=yellow, LL=blue, LR=green 
+ */
+function moodToQuadColor(v: number, a: number): string {
+    // normalize to [0..1]
+    const u = (Math.max(-1, Math.min(1, v)) + 1) / 2; // 0 at left, 1 at right
+    const w = (Math.max(-1, Math.min(1, a)) + 1) / 2; // 0 at bottom, 1 at top
+  
+    // corner RGBs:
+    const UL = [255,   0,   0]; // red
+    const UR = [255, 255,   0]; // yellow
+    const LL = [  0,   0, 255]; // blue
+    const LR = [  0, 255,   0]; // green
+  
+    // bilinear interp:
+    const blend = (C1: number[], C2: number[], t: number) => [
+      C1[0] + (C2[0] - C1[0]) * t,
+      C1[1] + (C2[1] - C1[1]) * t,
+      C1[2] + (C2[2] - C1[2]) * t,
+    ];
+  
+    // first interpolate horizontally on bottom and top edges:
+    const bottom = blend(LL, LR, u);  // at a = -1
+    const top    = blend(UL, UR, u);  // at a = +1
+  
+    // then interpolate vertically between those:
+    const rgb = blend(bottom, top, w);
+  
+    // turn into CSS hex:
+    const toHex = (c: number) => {
+      const h = Math.round(c).toString(16).padStart(2, '0');
+      return h;
+    };
+    return `#${toHex(rgb[0])}${toHex(rgb[1])}${toHex(rgb[2])}`;
+  }
+  
   //define functions for pointer actions (for touchscreen devices)
   //A double-click would place an emotion
   /** Show label on single click/tap */
-  /** Show label on single click/tap (canvas-relative) */
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
   
-    // 1️⃣ Measure on-screen CSS size & position
     const rect = canvas.getBoundingClientRect();
     const cw   = rect.width;
     const ch   = rect.height;
   
-    // 2️⃣ Convert the tap to canvas-local coords
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
   
-    // 3️⃣ Gather only moods with labels
-    const labeled: Mood[] = [
-      ...moods.filter(m => !!m.feeling_label),
-      ...(localMood && localMood.feeling_label ? [localMood] : []),
+    const allMoods: Mood[] = [
+      ...moods,
+      ...(localMood ? [localMood] : []),
     ];
   
-    // 4️⃣ Hit-test in that canvas space
-    const hit = labeled.find(m => {
+    const hit = allMoods.find(m => {
       const x0 = (m.valence  / 2 + 0.5) * cw;
       const y0 = (-m.arousal / 2 + 0.5) * ch;
       return Math.hypot(mx - x0, my - y0) < 12;
     });
   
     if (hit) {
-      // 5️⃣ Compute the dot’s center *relative* to the canvas
-      const relX = (hit.valence  / 2 + 0.5) * cw;
-      const relY = (-hit.arousal / 2 + 0.5) * ch;
+      setHoveredMood(hit);
   
-      setHoverLabel(hit.feeling_label!);
-      setHoverPos({ x: relX, y: relY });
+      if (hit.feeling_label) {
+        const relX = (hit.valence  / 2 + 0.5) * cw;
+        const relY = (-hit.arousal / 2 + 0.5) * ch;
+        setHoverLabel(hit.feeling_label);
+        setHoverPos({ x: relX, y: relY });
+      } else {
+        setHoverLabel(null);
+      }
     } else {
+      setHoveredMood(null);
       setHoverLabel(null);
     }
   };
@@ -128,7 +167,7 @@ useEffect(() => {
     canvas.width  = cw * dpr;
     canvas.height = ch * dpr;
     ctx.scale(dpr, dpr);
-  
+
     // 3️⃣ Clear the full area
     ctx.clearRect(0, 0, cw, ch);
   
@@ -168,17 +207,20 @@ useEffect(() => {
     ctx.textAlign     = 'right';
     ctx.fillText('Positive',    cw - 20,   ch/2);
   
-    // ——— plot everyone’s red dots (radius 8) ———
+    // ——— plot everyone else’s dots (radius 8) ———
     for (const m of moods) {
-      if (m.session_id === sessionId) continue;
-      const x = (m.valence  / 2 + 0.5) * cw;
-      const y = (-m.arousal / 2 + 0.5) * ch;
-      ctx.beginPath();
-      ctx.arc(x, y, 8, 0, Math.PI*2);
-      ctx.fillStyle   = '#ef4444';
-      ctx.globalAlpha = 0.35;
-      ctx.fill();
-      ctx.globalAlpha = 1;
+        if (m.session_id === sessionId) continue;
+    
+        const x = (m.valence / 2 + 0.5) * cw;
+        const y = (-m.arousal / 2 + 0.5) * ch;
+        ctx.beginPath();
+        ctx.arc(x, y, 8, 0, Math.PI * 2);
+    
+        // compute color from valence/arousal:
+        ctx.fillStyle = moodToQuadColor(m.valence, m.arousal);
+        ctx.globalAlpha = 0.35;
+        ctx.fill();
+        ctx.globalAlpha = 1;
     }
   
     // ——— plot *your* saved blue dot (radius 12) ———
@@ -203,8 +245,21 @@ useEffect(() => {
       ctx.fill();
       ctx.globalAlpha = 1;
     }
+
+    // ——— highlight hoveredMood with a yellow ring ———
+    if (hoveredMood) {
+        // use the *canvas‐relative* coords as before:
+        const x = (hoveredMood.valence  / 2 + 0.5) * cw;
+        const y = (-hoveredMood.arousal / 2 + 0.5) * ch;
+        ctx.beginPath();
+        ctx.arc(x, y, 14, 0, Math.PI * 2);
+        ctx.strokeStyle = '#4B5563'; //color of outer circle
+        ctx.lineWidth   = 3;
+        ctx.stroke();
+      }
   
   }, [moods, localMood, tempMood, tempPos, sessionId]);
+
 
   // on Enter: submit mood + optional label
   const handleInputKeyDown = async (e: KeyboardEvent<HTMLInputElement>) => {
@@ -265,40 +320,49 @@ const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
   
-    // 1️⃣ get on‐screen CSS size
-    const { width: cw, height: ch } = canvas.getBoundingClientRect();
+    const rect = canvas.getBoundingClientRect();
+    const cw   = rect.width;
+    const ch   = rect.height;
   
-    // 2️⃣ pointer in canvas coords (for hit test)
-    const mx = e.clientX - canvas.getBoundingClientRect().left;
-    const my = e.clientY - canvas.getBoundingClientRect().top;
+    // pointer in canvas coords
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
   
-    // 3️⃣ build a list of all labelled moods
-    const labeled: Mood[] = [
-      ...moods.filter(m => !!m.feeling_label),
-      ...(localMood && localMood.feeling_label ? [localMood] : []),
+    // consider *all* moods (including your local one) for hovering
+    const allMoods: Mood[] = [
+      ...moods,
+      ...(localMood ? [localMood] : []),
     ];
   
-    // 4️⃣ hit‐test
-    const hit = labeled.find(m => {
+    // hit‐test any mood
+    const hit = allMoods.find(m => {
       const x0 = (m.valence  / 2 + 0.5) * cw;
       const y0 = (-m.arousal / 2 + 0.5) * ch;
       return Math.hypot(mx - x0, my - y0) < 12;
     });
   
     if (hit) {
-      // 5️⃣ compute _canvas‐relative_ coords of the center
-      const relX = (hit.valence  / 2 + 0.5) * cw;
-      const relY = (-hit.arousal / 2 + 0.5) * ch;
+      // always highlight the circle
+      setHoveredMood(hit);
   
-      setHoverLabel(hit.feeling_label!);
-      setHoverPos({ x: relX, y: relY });
+      // only show a label if it exists
+      if (hit.feeling_label) {
+        const relX = (hit.valence  / 2 + 0.5) * cw;
+        const relY = (-hit.arousal / 2 + 0.5) * ch;
+        setHoverLabel(hit.feeling_label);
+        setHoverPos({ x: relX, y: relY });
+      } else {
+        setHoverLabel(null);
+      }
     } else {
+      setHoveredMood(null);
       setHoverLabel(null);
     }
   };
   
   const handlePointerLeave = () => {
     setHoverLabel(null);
+    setHoveredMood(null);
   };
   
 
@@ -391,82 +455,103 @@ const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     )}
 
       {/* Hover tooltip */}
-      {hoverLabel && hoverPos && (
-        <div
-          style={{
-            position: 'absolute',
-            left: hoverPos.x + 10,
-            top: hoverPos.y + 10,
-            background: 'rgba(0,0,0,0.75)',
-            color: '#fff',
-            padding: '4px 8px',
-            borderRadius: 4,
-            pointerEvents: 'none',
-            fontSize: '0.8em',
-            zIndex: 20,
-            whiteSpace: 'nowrap',
-            transform: 'translate(0,0)',
-          }}
-        >
-          {hoverLabel}
-        </div>
-      )}
+      {hoverLabel && hoverPos && (() => {
+        // measure the canvas’s display width
+        const cw = canvasRef.current
+            ? canvasRef.current.getBoundingClientRect().width
+            : width;
+        const isLeftSide = hoverPos.x < cw / 2;
 
-      {/* Tutorial toggle */}
-        <button
-        onClick={() => setShowTutorial(prev => !prev)}
-        style={{
-          position: 'absolute',
-          top: 25,
-          left: 8,
-          background: 'rgba(255,255,255,0.9)',
-          border: '1px solid #333',
-          borderRadius: '30px',
-          padding: '4px 8px',
-          cursor: 'pointer',
-          zIndex: 20,
-          fontSize: '1.2em'
-        }}
-        >
-        💡Tutorial
+        return (
+            <div
+            style={{
+                position:       'absolute',
+                left:           hoverPos.x,
+                top:            hoverPos.y,
+                transform:      isLeftSide
+                ? 'translate(12px, -50%)'
+                : 'translate(calc(-100% - 12px), -50%)',
+                display:        'flex',
+                alignItems:     'center',
+                gap:            '6px',
+                background:     'white',
+                color:          '#333',
+                padding:        '6px 10px',
+                borderRadius:   '9999px',              // pill-shaped
+                border:         '1px solid #333',
+                boxShadow:     '0 4px 12px rgba(0, 0, 0, 0.15)',
+                pointerEvents:  'none',
+                fontSize:       '0.9em',
+                fontFamily:     'Helvetica, Arial, sans-serif',
+                whiteSpace:     'nowrap',
+                zIndex:         20,
+            }}
+            >
+            <span style={{ fontSize: '1.1em', lineHeight: 1 }}></span>
+            <span>{hoverLabel}</span>
+            </div>
+        );
+        })()}
+
+      {/* Floating legend toggle */}
+      <button
+      onClick={() => setShowTutorial(prev => !prev)}
+      style={{
+        position:       'fixed',       // stuck to viewport
+        bottom:         24,            // 24px up from bottom
+        left:           16,            // 16px in from left
+        background:     'rgba(255,255,255,0.9)',
+        border:         '1px solid #333',
+        borderRadius:   '30px',
+        padding:        '6px 12px',
+        cursor:         'pointer',
+        zIndex:         1000,          // above everything
+        fontSize:       '1em',
+        fontFamily:     'Helvetica, Arial, sans-serif',
+        display:        'flex',
+        alignItems:     'center',
+        gap:            '4px',
+      }}
+      >
+      💡 How to use
       </button>
 
-      {/* Unfolded tutorial panel */}
       {showTutorial && (
         <div
-          style={{
-            position: 'absolute',
-            top: 65,
-            left: 8,
-            background: 'rgba(255,255,255,0.95)',
-            border: '1px solid #333',
-            borderRadius: '15px',
-            padding: '8px',
-            maxWidth: '240px',
-            fontSize: '0.9em',
-            zIndex: 20,
-            lineHeight: 1.4
-          }}
+            style={{
+            position:       'fixed',
+            bottom:         70,                     // 64px up
+            left:           16,
+            background:     'rgba(255,255,255,0.95)',
+            border:         '1px solid #333',
+            borderRadius:   '12px',
+            padding:        '12px',
+            maxWidth:       '280px',
+            fontSize:       '0.9em',
+            fontFamily:     'Helvetica, Arial, sans-serif',
+            lineHeight:     1.4,
+            zIndex:         1000,
+            boxShadow:      '0 2px 8px rgba(0,0,0,0.15)',
+            }}
         >
-        <strong>What is the Mood Map?</strong>
+            <strong>What is the Mood Map?</strong>
             <ul style={{ paddingLeft: '1em', margin: '0.5em 0' }}>
             <li>Science shows emotions can be mapped in 2D: valence (good–bad) and arousal (high–low energy).</li>
             <li>This map helps track how you and others feel, using that 2D space.</li>
             </ul>
 
-        <strong>How to use the Mood Map:</strong>
+            <strong>How to use the Mood Map:</strong>
             <ul style={{ paddingLeft: '1em', margin: '0.5em 0' }}>
-            <li>Double-click anywhere on the map to place your mood.</li>
+            <li>Click anywhere on the map to place your mood.</li>
             <li>Type a word (or leave blank) and press Enter to save.</li>
-            <li>Click any dot to see its mood label.</li>
+            <li>Single-click/tap on any dot to see its label.</li>
             </ul>
 
-        <strong>What the colors mean:</strong>
+            <strong>What the colors mean:</strong>
             <ul style={{ paddingLeft: '1em', margin: '0.5em 0' }}>
-            <li>Your moods = <span style={{ color: 'lightblue' }}>blue dots</span>.</li>
-            <li>Others' moods = <span style={{ color: 'pink' }}>pink dots</span>.</li>
+            <li><span style={{ color: '#3b82f6' }}>Blue dots</span> = your moods</li>
+            <li><span style={{ color: '#fca5a5' }}>Pink dots</span> = others’ moods</li>
             </ul>
-
         </div>
       )}
     </div>
