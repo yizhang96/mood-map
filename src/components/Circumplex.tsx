@@ -27,10 +27,6 @@ export default function Circumplex({
   // input value for the label
   const [inputValue, setInputValue] = useState('');
 
-  // track a long-press timer (for touchscreen devices)
-  let longPressTimer: ReturnType<typeof setTimeout> | null = null
-  const LONG_PRESS_DURATION = 500; 
-
   // hover tooltip state
   const [hoverLabel, setHoverLabel] = useState<string | null>(null);
   const [hoverPos, setHoverPos]     = useState<{ x: number; y: number } | null>(null);
@@ -42,54 +38,42 @@ export default function Circumplex({
   const [showTutorial, setShowTutorial] = useState(false);
 
   //define functions for pointer actions (for touchscreen devices)
-  // 1️⃣ Pointer down: start long-press (touch) or immediate click (mouse)
-  function handlePointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
-    // clear any existing tooltip
-    setHoverLabel(null);
-  
-    if (e.pointerType === 'touch') {
-      longPressTimer = setTimeout(() => {
-        handleCanvasClick(e);
-      }, LONG_PRESS_DURATION);
-    } else {
-      handleCanvasClick(e);
-    }
-  }
-  
-  // 2️⃣ Pointer up: cancel the timer so short taps don’t fire
-  function handlePointerUp() {
-    if (longPressTimer) {
-      clearTimeout(longPressTimer);
-      longPressTimer = null;
-    }
-  }
-  
-  // 3️⃣ Unified click logic: show label if tapping a dot, else place a new mood
-  function handleCanvasClick(e: React.PointerEvent<HTMLCanvasElement>) {
+  //A double-click would place an emotion
+  /** Show label on single click/tap */
+  const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = canvasRef.current!.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-  
-    // — hit-test existing labeled dots first —
-    const allLabeled = [
+    const mx   = e.clientX - rect.left;
+    const my   = e.clientY - rect.top;
+
+    // only consider moods that actually have labels
+    const all = [
       ...moods.filter(m => m.feeling_label),
       ...(localMood && localMood.feeling_label ? [localMood] : [])
     ];
-    for (const m of allLabeled) {
+
+    // hit‐test with a 12px radius
+    const hit = all.find(m => {
       const x0 = (m.valence  / 2 + 0.5) * width;
       const y0 = (-m.arousal / 2 + 0.5) * height;
-      if (Math.hypot(x - x0, y - y0) < 12) {
-        setHoverLabel(m.feeling_label!);
-        setHoverPos({ x: e.clientX, y: e.clientY });
-        setTempMood(null);
-        setTempPos(null);
-        return;
-      }
+      return Math.hypot(mx - x0, my - y0) < 12;
+    });
+
+    if (hit) {
+      setHoverLabel(hit.feeling_label!);
+      setHoverPos({ x: e.clientX, y: e.clientY });
     }
-  
-    // — otherwise start a new mood placement —
+  };
+
+  /** Place a new mood on double-click/tap */
+  const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    e.preventDefault();  // stop Safari’s default double-tap zoom
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const x    = e.clientX - rect.left;
+    const y    = e.clientY - rect.top;
+
     const valence = (x / width  - 0.5) * 2;
     const arousal = -((y / height - 0.5) * 2);
+
     setTempMood({
       session_id: sessionId,
       valence,
@@ -98,8 +82,8 @@ export default function Circumplex({
     });
     setTempPos({ x, y });
     setInputValue('');
-  }
-
+  };
+  
 
   // redraw everything whenever moods, pending, etc. change
   useEffect(() => {
@@ -281,6 +265,8 @@ export default function Circumplex({
     setHoverLabel(null);
   };
 
+
+
   return (
     <div style={{ 
         position: 'relative', 
@@ -291,17 +277,18 @@ export default function Circumplex({
       <canvas
         ref={canvasRef}
         style={{
-          width: `${width}px`,
-          height: `${height}px`,
+          width: `100%`,
+          height: `auto`,
           border: '2px solid #333',
           borderRadius: '30px',
           background: '#fff',
           display: 'block',
           margin: '1rem auto',
-          touchAction: 'auto',
+          touchAction: 'manipulation',
+          userSelect: 'none',
         }}
-        onPointerDown={handlePointerDown}
-        onPointerUp={handlePointerUp}
+        onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
         onPointerMove={handlePointerMove}
         onPointerLeave={handlePointerLeave}
       />
@@ -427,9 +414,9 @@ export default function Circumplex({
 
         <strong>How to use the Mood Map:</strong>
             <ul style={{ paddingLeft: '1em', margin: '0.5em 0' }}>
-            <li>Click anywhere on the map to place your mood.</li>
+            <li>Double-click anywhere on the map to place your mood.</li>
             <li>Type a word (or leave blank) and press Enter to save.</li>
-            <li>Hover over any dot to see its label.</li>
+            <li>Click any dot to see its mood label.</li>
             </ul>
 
         <strong>What the colors mean:</strong>
