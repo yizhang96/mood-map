@@ -41,7 +41,7 @@ export default function Circumplex({
   const [showTutorial, setShowTutorial] = useState(false);
 
   // your desired box size:
-  const BOX_W = 120;  // a bit smaller than before
+  const BOX_W = 140;  // a bit smaller than before
   const BOX_H = 40;
 
   //define function for mapping valence-arousal to colors
@@ -413,58 +413,69 @@ const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
 
       {/* Text entry + action buttons */}
       {tempMood && inputPos && (
-  <div
-    style={{
-      position:     'absolute',
-      left:         inputPos.x,
-      top:          inputPos.y,
-      transform:    'translate(-50%, -50%)',
-      display:      'flex',
-      gap:          '4px',
-      background:   'rgba(255,255,255,0.9)',
-      padding:      '4px 6px',
-      borderRadius: '4px',
-      boxShadow:    '0 1px 4px rgba(0,0,0,0.15)',
-      zIndex:       10,
-    }}
-  >
-    <input
-      autoFocus
-      value={inputValue}
-      onChange={e => setInputValue(e.target.value)}
-      onKeyDown={handleInputKeyDown}
-      placeholder="Label (opt.)"
-      style={{
-        fontSize: '0.9em',
-        padding:  '4px 6px',
-        width:    `${BOX_W - 40}px`,  // leave room for two small buttons
-        height:   '32px',
-      }}
-    />
-    <button
-      onClick={handleSubmitClick}
-      style={{
-        fontSize: '0.9em',
-        padding:  '4px 8px',
-        height:   '32px',
-        cursor:   'pointer',
-      }}
+    <div
+        style={{
+        position:     'absolute',
+        left:         inputPos.x,
+        top:          inputPos.y,
+        transform:    'translate(-50%, -50%)',
+        display:      'flex',
+        gap:          '6px',
+        background:   '#fff',
+        padding:      '6px 10px',
+        borderRadius: '9999px',  // pill shape
+        border:       '1.5px solid #333',
+        boxShadow:    '0 4px 12px rgba(0, 0, 0, 0.15)',
+        zIndex:       10,
+        alignItems:   'center',
+        }}
     >
-      ✓
-    </button>
-    <button
-      onClick={handleCancelClick}
-      style={{
-        fontSize: '0.9em',
-        padding:  '4px 8px',
-        height:   '32px',
-        cursor:   'pointer',
-      }}
-    >
-      ✕
-    </button>
-  </div>
-)}
+        <input
+        autoFocus
+        value={inputValue}
+        onChange={e => setInputValue(e.target.value)}
+        onKeyDown={handleInputKeyDown}
+        placeholder="Label (optional)"
+        style={{
+            fontSize:     '0.9em',
+            padding:      '6px 10px',
+            width:        `${BOX_W - 40}px`,
+            height:       '30px',
+            border:       'none',
+            outline:      'none',
+            fontFamily:   'Helvetica, Arial, sans-serif',
+            background:   'transparent',
+        }}
+        />
+        <button
+        onClick={handleSubmitClick}
+        style={{
+            fontSize: '1em',
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            padding: '0 6px',
+            lineHeight: 1,
+        }}
+        >
+        ✓
+        </button>
+        <button
+        onClick={handleCancelClick}
+        style={{
+            fontSize: '1em',
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            padding: '0 6px',
+            lineHeight: 1,
+        }}
+        >
+        ✕
+        </button>
+    </div>
+    )}
+
 
       {/* Hover tooltip */}
       {hoverLabel && hoverPos && (() => {
@@ -525,7 +536,7 @@ const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
         gap:            '4px',
       }}
       >
-      💡 How to use
+      💡 Learn more!
       </button>
 
       {showTutorial && (
