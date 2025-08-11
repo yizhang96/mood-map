@@ -33,6 +33,15 @@ jobs:
           node-version: 20
           cache: 'pnpm'
 
+      # put this before the V1/V2 build steps
+      - name: Export env for Vite builds
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          echo "VITE_SUPABASE_URL=${VITE_SUPABASE_URL}" >> $GITHUB_ENV
+          echo "VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}" >> $GITHUB_ENV
+
       # Build V1
       - name: Install & Build V1
         run: |
