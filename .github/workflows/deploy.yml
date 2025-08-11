@@ -1,0 +1,83 @@
+name: Deploy V1 and V2 to GitHub Pages
+
+on:
+  push:
+    branches: [ v2 ]      # deploy when pushing to v2
+  workflow_dispatch:       # allow manual trigger
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      # Build V1
+      - name: Install & Build V1
+        run: |
+          pnpm -C app-v1 install --frozen-lockfile
+          pnpm -C app-v1 build
+
+      # Build V2
+      - name: Install & Build V2
+        run: |
+          pnpm -C app-v2 install --frozen-lockfile
+          pnpm -C app-v2 build
+
+      # Stage combined site
+      - name: Prepare Pages artifact
+        run: |
+          mkdir -p pages-out/v1 pages-out/v2
+
+          cp -R app-v1/dist/* pages-out/v1/
+          cp -R app-v2/dist/* pages-out/v2/
+
+          # Root landing page
+          cat > pages-out/index.html <<'HTML'
+          <!doctype html>
+          <html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Mood Map</title>
+          <body style="font-family:Helvetica,Arial,sans-serif; padding:24px">
+            <h1>Mood Map</h1>
+            <p><a href="./v1/">Open v1</a></p>
+            <p><a href="./v2/">Open v2</a></p>
+          </body></html>
+          HTML
+
+          # SPA fallback for client-side routing
+          cp pages-out/v1/index.html pages-out/v1/404.html
+          cp pages-out/v2/index.html pages-out/v2/404.html
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages-out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
