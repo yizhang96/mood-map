@@ -9,7 +9,6 @@ Each user can place a dot on the 2D canvas to represent their current emotional 
 In **Version 1**, users can freely type their own emotion labels.  
 In **Version 2**, users choose from 20 predefined emotion labels, and can also create and share group mood boards with friends, classmates, or teams.
 
----
 
 ## Why Mood Map?
 
@@ -19,7 +18,6 @@ Emotions are complex but not random. Decades of affective science show that most
 - Enable groups (e.g., classrooms, teams) to visualize the collective emotional landscape  
 - Offer a low-barrier entry into emotional tracking
 
----
 
 ## Key Differences Between Versions
 
@@ -29,7 +27,6 @@ Emotions are complex but not random. Decades of affective science show that most
 | **Group Boards** | No group sharing | Users can create and share mood boards for specific groups (friends, classes, teams) |
 | **Interaction** | Individual mood logging | Group mood sharing and comparison |
 
----
 
 ## Features (Both Versions)
 
@@ -38,14 +35,12 @@ Emotions are complex but not random. Decades of affective science show that most
 - 🧠 Grounded in psychological research on emotion and affect  
 - 🌍 Built to support emotional visibility for individuals or groups  
 
----
 
 ## Live Demos
 
 - **👉 [Try Mood Map V1](https://yizhang96.github.io/mood-map/v1/)**  
 - **👉 [Try Mood Map V2](https://yizhang96.github.io/mood-map/v2/)** *(with group boards & predefined labels)*
 
----
 
 ## Built With
 
@@ -54,7 +49,6 @@ Emotions are complex but not random. Decades of affective science show that most
 - **Tailwind CSS**: Utility-first styling  
 - **Supabase**: Backend-as-a-service for storing mood data
 
----
 
 ## Developer Notes
 
