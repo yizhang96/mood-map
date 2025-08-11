@@ -24,12 +24,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'pnpm'
+          cache: 'pnpm'   # cache still helps when a lockfile is present
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
+      # Ensure pnpm is available (fixes "Unable to locate executable file: pnpm")
+      - name: Install pnpm
+        run: npm install -g pnpm@9
 
       # Build V1
       - name: Install & Build V1
@@ -48,8 +47,8 @@ jobs:
         run: |
           mkdir -p pages-out/v1 pages-out/v2
 
-          cp -R app-v1/dist/* pages-out/v1/
-          cp -R app-v2/dist/* pages-out/v2/
+          cp -R docs/v1/* pages-out/v1/
+          cp -R docs/v2/* pages-out/v2/
 
           # Root landing page
           cat > pages-out/index.html <<'HTML'
