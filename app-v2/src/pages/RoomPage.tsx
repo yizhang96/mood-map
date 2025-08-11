@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
-import EmotionPicker from '../components/EmotionPicker';
 import SidebarPopular from '../components/SidebarPopular';
 import MoodMapCanvas from '../components/MoodMapCanvas';
 import { EMOTION_BY_KEY } from '../constants/emotions';
@@ -16,7 +15,6 @@ export default function RoomPage() {
   const { roomId } = useParams(); // may be slug or id
   const [room, setRoom] = useState<Room | null>(null);
   const [notFound, setNotFound] = useState(false);
-  const [copied, setCopied] = useState(false); // copy successfully feedback
   const [showScience, setShowScience] = useState(false);
   const [sciencePos, setSciencePos] = useState<{ top: number; left: number } | null>(null);
   const scienceBtnRef = useRef<HTMLButtonElement>(null);
@@ -87,15 +85,6 @@ function toggleScience() {
 
   // 5) Post a discrete emotion (uses roomId + memberId)
   const postEmotion = usePostEmotion(room?.id, memberId);
-
-  async function handleSelectEmotion(key: string) {
-    try {
-      await postEmotion(key);
-      // realtime subscription will append it; no need for manual optimistic UI
-    } catch (err: any) {
-      alert(err.message ?? 'Failed to post emotion');
-    }
-  }
 
   const dots = useMemo(
     () =>

@@ -1,11 +1,11 @@
 // app-v2/src/components/SidebarPopular.tsx
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { EMOTIONS } from '../constants/emotions';
 
 type Row = { emotion_key: string; n: number };
 
 export default function SidebarPopular({ rows = [] }: { rows: Row[] }) {
-  const { labelByKey, solidByKey, barByKey, maxN } = useMemo(() => {
+  const { labelByKey, barByKey, maxN } = useMemo(() => {
     // anchors to match canvas grid
     const colsAnchors = Array.from(new Set(EMOTIONS.map(e => e.v))).sort((a, b) => a - b); // left→right
     const rowsAnchors = Array.from(new Set(EMOTIONS.map(e => e.a))).sort((a, b) => b - a); // top→bottom

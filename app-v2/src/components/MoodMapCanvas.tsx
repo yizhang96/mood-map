@@ -38,8 +38,6 @@ export default function MoodMapCanvas({
     return [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
   }
   function rgb(r: number, g: number, b: number, a = 1) { return `rgba(${r|0},${g|0},${b|0},${a})`; }
-  const vx = (v: number) => ((v + 1) / 2) * width;       // -1..+1 -> 0..W
-  const ay = (a: number) => (1 - (a + 1) / 2) * height;  // -1..+1 -> 0..H
 
   // ---------- GRID + tiles (uniform 5×5 derived from emotion anchors) ----------
   const { GRID, tiles } = useMemo(() => {
@@ -144,8 +142,6 @@ export default function MoodMapCanvas({
 
     // 2) Axes through the center but shortened so they don't overlap emotion tiles or labels
     const gx = GRID.gridX, gy = GRID.gridY;
-    const gxRight = GRID.gridX + GRID.gridW;
-    const gyBottom = GRID.gridY + GRID.gridH;
 
     // center point
     const cx = gx + GRID.gridW / 2;
