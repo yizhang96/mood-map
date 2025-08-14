@@ -61,7 +61,9 @@ export default function SidebarPopular({ rows = [] }: { rows: Row[] }) {
         background: '#fff',
       }}
     >
-      <div style={{ fontWeight: 700, marginBottom: 8 }}>Most popular (last 24h)</div>
+      <div style={{ fontWeight: 700, marginBottom: 8 }}>Most popular moods</div>
+
+      <h1 ></h1>
 
       {rows.slice(0, 5).map((r) => {
         const label = labelByKey[r.emotion_key] ?? r.emotion_key;

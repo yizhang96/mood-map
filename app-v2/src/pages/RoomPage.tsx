@@ -18,6 +18,8 @@ export default function RoomPage() {
   const [showScience, setShowScience] = useState(false);
   const [sciencePos, setSciencePos] = useState<{ top: number; left: number } | null>(null);
   const scienceBtnRef = useRef<HTMLButtonElement>(null);
+  const [pending, setPending] = useState<{ v: number; a: number } | null>(null);
+
 
 function toggleScience() {
   if (!showScience && scienceBtnRef.current) {
@@ -69,9 +71,22 @@ function toggleScience() {
   // 3) Live moods for this room (initial load + realtime INSERT)
   const { moods } = useRoomMoods(room?.id);
 
+  // at top with other state:
+  const EPS = 0.005;
+
+  useEffect(() => {
+    if (!pending || !memberId) return;
+    const mine = moods.find(m => m.member_id === memberId);
+    if (!mine) return;
+
+    const close = (a: number, b: number) => Math.abs(a - b) < EPS;
+    if (close(mine.valence, pending.v) && close(mine.arousal, pending.a)) {
+      setPending(null); // realtime has caught up
+    }
+  }, [moods, memberId, pending]);
+
   // 4) RPC-backed popularity list (24h)
   //const { rows: top } = usePopularEmotions(room?.id);
-
   // Top 5 emotions, recalculated on every realtime mood update
   const top = useMemo(() => {
     const counts = new Map<string, number>();
@@ -86,16 +101,32 @@ function toggleScience() {
   // 5) Post a discrete emotion (uses roomId + memberId)
   const postEmotion = usePostEmotion(room?.id, memberId);
 
-  const dots = useMemo(
-    () =>
-      moods.map(m => ({
-        valence: m.valence,
-        arousal: m.arousal,
-        color: EMOTION_BY_KEY[m.emotion_key]?.color ?? '#3b82f6',
-        member_id: m.member_id,
-      })),
-    [moods]
-  );
+  const dots = useMemo(() => {
+    // base dots from DB
+    const base = moods.map(m => ({
+      valence: m.valence,
+      arousal: m.arousal,
+      color: EMOTION_BY_KEY[m.emotion_key]?.color ?? '#3b82f6',
+      member_id: m.member_id,
+      label: m.feeling_label ?? undefined,  
+    }));
+  
+    if (!memberId || !pending) return base;
+  
+    // if you already have a row for me, override its position
+    const idx = base.findIndex(d => d.member_id === memberId);
+    if (idx >= 0) {
+      const copy = base.slice();
+      copy[idx] = { ...copy[idx], valence: pending.v, arousal: pending.a };
+      return copy;
+    }
+    // otherwise, add a temporary dot for me
+    return [
+      ...base,
+      { valence: pending.v, arousal: pending.a, member_id: memberId, color: '#3b82f6' },
+    ];
+  }, [moods, memberId, pending]);
+  
 
   if (notFound) return <main style={{ padding: 24 }}>Room not found or access denied.</main>;
   if (!room) return <main style={{ padding: 24 }}>Loading room…</main>;
@@ -117,15 +148,31 @@ function toggleScience() {
         <h2 style={{ fontFamily: 'Helvetica, Arial, sans-serif', fontSize: 20, fontWeight: 300 }}>💬 How are you feeling? Click on the map to label your mood.</h2>
 
         <MoodMapCanvas
-        width={560}
-        height={560}
-        dots={dots}
-        currentMemberId={memberId ?? undefined}
-        onSelect={({ emotionKey, valence, arousal }) =>
-            postEmotion(emotionKey, { v: valence, a: arousal })
-            .catch(err => alert(err.message ?? 'Failed to post emotion'))
-        }
+          width={560}
+          height={560}
+          dots={dots}
+          currentMemberId={memberId ?? undefined}
+          onSelect={async ({ emotionKey, valence, arousal, feelingLabel }) => {
+            // ❗ ensure we have a memberId; otherwise we'd insert with member_id = null
+            if (!memberId) {
+              alert('Setting up your session… please try again in a moment.');
+              return;
+            }
+
+            // optimistic move
+            setPending({ v: valence, a: arousal });
+
+            try {
+              await postEmotion(emotionKey, { v: valence, a: arousal }, feelingLabel);
+              // ❌ don't clear here — wait for realtime confirmation (next step)
+            } catch (err: any) {
+              alert(err.message ?? 'Failed to post emotion');
+              setPending(null); // only clear on error
+            }
+          }}
         />
+
+
       </section>
 
       <aside>

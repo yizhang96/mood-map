@@ -9,10 +9,25 @@ export type MoodRow = {
   emotion_key: string;
   valence: number;
   arousal: number;
-  label: string | null;
+  feeling_label: string | null;   // ← use feeling_label
   created_at: string;
   updated_at?: string | null;
 };
+
+// Normalize row coming from DB / realtime (support legacy `label`)
+function normalizeRow(r: any): MoodRow {
+  return {
+    id: r.id,
+    room_id: r.room_id,
+    member_id: r.member_id ?? null,
+    emotion_key: r.emotion_key,
+    valence: r.valence,
+    arousal: r.arousal,
+    feeling_label: r.feeling_label ?? r.label ?? null, // ← fallback to legacy `label`
+    created_at: r.created_at,
+    updated_at: r.updated_at ?? null,
+  };
+}
 
 export function useRoomMoods(roomId?: string) {
   const [moods, setMoods] = useState<MoodRow[]>([]);
@@ -26,35 +41,45 @@ export function useRoomMoods(roomId?: string) {
       setLoading(true);
       const { data, error } = await supabase
         .from('moods_v2')
-        .select('*')
+        .select(
+          // select both feeling_label and legacy label so we can normalize
+          'id, room_id, member_id, emotion_key, valence, arousal, feeling_label, created_at, updated_at'
+        )
         .eq('room_id', roomId);
-      if (!cancelled) {
-        if (error) console.error(error);
-        // If legacy data had multiple rows per member, keep the latest per member:
-        const latestByMember = new Map<string, MoodRow>();
-        for (const m of (data ?? [])) {
-          if (!m.member_id) continue;
-          const prev = latestByMember.get(m.member_id);
-          const prevTime = prev ? (prev.updated_at ?? prev.created_at) : '';
-          const curTime = m.updated_at ?? m.created_at;
-          if (!prev || new Date(curTime) > new Date(prevTime)) {
-            latestByMember.set(m.member_id, m);
-          }
-        }
-        setMoods(Array.from(latestByMember.values()));
+
+      if (cancelled) return;
+
+      if (error) {
+        console.error(error);
         setLoading(false);
+        return;
       }
+
+      // Keep only the latest row per member (handles any legacy duplicates)
+      const latestByMember = new Map<string, MoodRow>();
+      for (const raw of data ?? []) {
+        const m = normalizeRow(raw);
+        if (!m.member_id) continue;
+        const prev = latestByMember.get(m.member_id);
+        const prevTime = prev ? (prev.updated_at ?? prev.created_at) : '';
+        const curTime = m.updated_at ?? m.created_at;
+        if (!prev || new Date(curTime) > new Date(prevTime)) {
+          latestByMember.set(m.member_id, m);
+        }
+      }
+      setMoods(Array.from(latestByMember.values()));
+      setLoading(false);
     })();
 
     const channel = supabase
       .channel(`room-${roomId}`)
-      .on('postgres_changes',
+      .on(
+        'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'moods_v2', filter: `room_id=eq.${roomId}` },
         payload => {
-          const row = payload.new as MoodRow;
+          const row = normalizeRow(payload.new);
           setMoods(prev => {
-            // replace existing member’s row or append
-            const idx = prev.findIndex(m => m.member_id === row.member_id);
+            const idx = row.member_id ? prev.findIndex(m => m.member_id === row.member_id) : -1;
             if (idx >= 0) {
               const next = prev.slice();
               next[idx] = row;
@@ -62,13 +87,15 @@ export function useRoomMoods(roomId?: string) {
             }
             return [...prev, row];
           });
-        })
-      .on('postgres_changes',
+        }
+      )
+      .on(
+        'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'moods_v2', filter: `room_id=eq.${roomId}` },
         payload => {
-          const row = payload.new as MoodRow;
+          const row = normalizeRow(payload.new);
           setMoods(prev => {
-            const idx = prev.findIndex(m => m.member_id === row.member_id);
+            const idx = row.member_id ? prev.findIndex(m => m.member_id === row.member_id) : -1;
             if (idx >= 0) {
               const next = prev.slice();
               next[idx] = row;
@@ -77,10 +104,14 @@ export function useRoomMoods(roomId?: string) {
             // if we missed the insert earlier, add it now
             return [...prev, row];
           });
-        })
+        }
+      )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); cancelled = true; };
+    return () => {
+      supabase.removeChannel(channel);
+      cancelled = true;
+    };
   }, [roomId]);
 
   return { moods, loading };

@@ -3,31 +3,33 @@ import { useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { EMOTION_BY_KEY } from '../constants/emotions';
 
+type Coords = { v: number; a: number } | undefined;
+
 export function usePostEmotion(roomId?: string, memberId?: string | null) {
   return useCallback(
-    async (emotionKey: string, overrides?: { v?: number; a?: number; label?: string }) => {
+    async (emotionKey: string, coords?: Coords, feelingLabel?: string) => {
       if (!roomId) throw new Error('Missing roomId');
-      if (!memberId) throw new Error('Missing memberId');
       const emo = EMOTION_BY_KEY[emotionKey];
       if (!emo) throw new Error('Invalid emotion key');
 
-      const payload = {
-        room_id: roomId,
-        member_id: memberId,
-        emotion_key: emotionKey,
-        valence: overrides?.v ?? emo.v,
-        arousal: overrides?.a ?? emo.a,
-        ...(overrides?.label ? { label: overrides.label } : {}),
-        // let DB set updated_at via trigger; keeping created_at as first insert timestamp
-      };
+      const v = coords?.v ?? emo.v;
+      const a = coords?.a ?? emo.a;
 
+      // If you created a unique index on (room_id, member_id) with NULLS NOT DISTINCT,
+      // this upsert will keep one row per member per room.
       const { error } = await supabase
         .from('moods_v2')
-        .upsert(payload, {
-          onConflict: 'room_id,member_id',
-          ignoreDuplicates: false, // update existing row
-        })
-        .select('id'); // ensure PostgREST returns something
+        .upsert(
+          {
+            room_id: roomId,
+            member_id: memberId ?? null,
+            emotion_key: emotionKey,
+            valence: v,
+            arousal: a,
+            feeling_label: feelingLabel ?? null,
+          },
+          { onConflict: 'room_id,member_id' }
+        );
 
       if (error) throw error;
     },

@@ -2,13 +2,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { EMOTIONS } from '../constants/emotions';
 
-type Dot = { 
-  valence: number; 
-  arousal: number; 
+type Dot = {
+  valence: number;
+  arousal: number;
   color?: string;
-  member_id?: string | null; // optional member ID for future use
+  member_id?: string | null;   // used to highlight current user
+  label?: string;              // ← optional tooltip text
 };
-type SelectPayload = { emotionKey: string; valence: number; arousal: number };
+type SelectPayload = { 
+  emotionKey: string; 
+  valence: number; 
+  arousal: number;
+  feelingLabel?: string;
+};
 
 export default function MoodMapCanvas({
   width = 600,
@@ -23,11 +29,26 @@ export default function MoodMapCanvas({
   dots: Dot[];
   showEmotionLabels?: boolean;
   onSelect?: (sel: SelectPayload) => void;
-  currentMemberId?: string; // optional, for future use
+  currentMemberId?: string;
 }) {
+  const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
-  const [pointerPx, setPointerPx] = useState<{ x: number; y: number } | null>(null); // kept for future tooltip/cursor
+  const [pointerPx, setPointerPx] = useState<{ x: number; y: number } | null>(null);
+  const [hoveredDot, setHoveredDot] = useState<{ x: number; y: number; r: number } | null>(null);
+
+  //bubble for optional mood label
+  // near other useState hooks in MoodMapCanvas.tsx
+  const [editing, setEditing] = useState<null | {
+    x: number; y: number;    // exact click position for the dot
+    valence: number; arousal: number;
+    emotionKey: string;
+    text: string;
+  }>(null);
+
+  // tooltip for dot labels
+  const [dotTip, setDotTip] = useState<{ x: number; y: number; text: string } | null>(null);
 
   // ---------- helpers ----------
   function uniqSorted<T>(arr: T[], cmp: (a: T, b: T) => number) {
@@ -38,6 +59,29 @@ export default function MoodMapCanvas({
     return [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
   }
   function rgb(r: number, g: number, b: number, a = 1) { return `rgba(${r|0},${g|0},${b|0},${a})`; }
+  
+  function tileColorAt(col: number, row: number, cols: number, rows: number) {
+    const u = col / Math.max(1, cols - 1);
+    const v = row / Math.max(1, rows - 1);
+  
+    const UL: [number, number, number] = [255,   0,   0];
+    const UR: [number, number, number] = [255, 255,   0];
+    const LL: [number, number, number] = [  0,   0, 255];
+    const LR: [number, number, number] = [  0, 255,   0];
+    const midYellow: [number, number, number] = [255, 255, 102];
+  
+    const left = lerp3(UL, LL, v);
+    let right: [number, number, number];
+    if (v < 0.5) {
+      const t = v / 0.5;
+      right = lerp3(UR, midYellow, t);
+    } else {
+      const t = (v - 0.5) / 0.5;
+      right = lerp3(midYellow, LR, t);
+    }
+  
+    return lerp3(left, right, u);
+  }
 
   // ---------- GRID + tiles (uniform 5×5 derived from emotion anchors) ----------
   const { GRID, tiles } = useMemo(() => {
@@ -81,7 +125,7 @@ export default function MoodMapCanvas({
     };
   }, [width, height]);
 
-  // inverse mapping that respects the padded GRID
+  // valence/arousal ↔ px (respecting GRID)
   const invV = (x: number) => {
     const u = (x - GRID.gridX) / GRID.gridW; // 0..1 across grid
     return Math.max(-1, Math.min(1, u * 2 - 1));
@@ -90,6 +134,8 @@ export default function MoodMapCanvas({
     const v = (y - GRID.gridY) / GRID.gridH; // 0..1 top→bottom
     return Math.max(-1, Math.min(1, (1 - v) * 2 - 1));
   };
+  const v2x = (v: number) => ((v + 1) / 2) * GRID.gridW + GRID.gridX;
+  const a2y = (a: number) => (1 - (a + 1) / 2) * GRID.gridH + GRID.gridY;
 
   // ---------- draw ----------
   useEffect(() => {
@@ -104,32 +150,23 @@ export default function MoodMapCanvas({
     ctx.clearRect(0, 0, width, height);
 
     // 1) tiles with bilinear corner gradient (UL red, UR yellow, LL blue, LR green)
-    const UL: [number, number, number] = [255,   0,   0]; // red (upper-left)
-    const UR: [number, number, number] = [255, 255,   0]; // yellow (upper-right)
-    const LL: [number, number, number] = [  0,   0, 255]; // blue (lower-left)
-    const LR: [number, number, number] = [  0, 255,   0]; // green (lower-right)
-
-    // keep top-right more yellow before blending to green
-    const midYellow: [number, number, number] = [255, 255, 102]; // #ffff66
+    const UL: [number, number, number] = [255,   0,   0];
+    const UR: [number, number, number] = [255, 255,   0];
+    const LL: [number, number, number] = [  0,   0, 255];
+    const LR: [number, number, number] = [  0, 255,   0];
+    const midYellow: [number, number, number] = [255, 255, 102];
 
     for (const tile of tiles) {
-      const u = tile.col / Math.max(1, GRID.COLS - 1); // 0..1 left→right
-      const v = tile.row / Math.max(1, GRID.ROWS - 1); // 0..1 top→bottom
+      const u = tile.col / Math.max(1, GRID.COLS - 1);
+      const v = tile.row / Math.max(1, GRID.ROWS - 1);
 
-      // left edge (unchanged)
       const left = lerp3(UL, LL, v);
-
-      // right edge with mid control point
       let right: [number, number, number];
       if (v < 0.5) {
-        const t = v / 0.5;             // top half
-        right = lerp3(UR, midYellow, t);
+        const t = v / 0.5; right = lerp3(UR, midYellow, t);
       } else {
-        const t = (v - 0.5) / 0.5;     // bottom half
-        right = lerp3(midYellow, LR, t);
+        const t = (v - 0.5) / 0.5; right = lerp3(midYellow, LR, t);
       }
-
-      // blend across the tile from left→right
       const col = lerp3(left, right, u);
 
       pathRoundRect(ctx, tile.x, tile.y, tile.w, tile.h, Math.min(tile.w, tile.h) * 0.2);
@@ -140,164 +177,147 @@ export default function MoodMapCanvas({
       ctx.stroke();
     }
 
-    // 2) Axes through the center but shortened so they don't overlap emotion tiles or labels
+    // 2) Shortened axes + labels around grid center
     const gx = GRID.gridX, gy = GRID.gridY;
-
-    // center point
     const cx = gx + GRID.gridW / 2;
     const cy = gy + GRID.gridH / 2;
-
-    // inset from tile edge so we avoid both tiles and labels
     const TILE_HALF = (tiles[0]?.w || 50) / 2;
-    const LABEL_GAP = 20; // extra gap for label space
+    const LABEL_GAP = 20;
     const AXIS_INSET = TILE_HALF + LABEL_GAP;
 
     ctx.strokeStyle = '#9ca3af';
-    ctx.lineWidth = 1;
-
-    // vertical axis
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(cx, cy - AXIS_INSET);
     ctx.lineTo(cx, cy + AXIS_INSET);
-    ctx.stroke();
-
-    // horizontal axis
-    ctx.beginPath();
     ctx.moveTo(cx - AXIS_INSET, cy);
     ctx.lineTo(cx + AXIS_INSET, cy);
     ctx.stroke();
 
-    // 3) Axis labels — placed closer to center, away from axes
     ctx.fillStyle = '#111';
     ctx.font = 'bold 12px Helvetica, Arial, sans-serif';
-
-    // top & bottom
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
     ctx.fillText('High Energy', cx, cy - AXIS_INSET - 4);
     ctx.textBaseline = 'top';
     ctx.fillText('Low Energy', cx, cy + AXIS_INSET + 4);
-
-    // left & right
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'right';
     ctx.fillText('Negative', cx - AXIS_INSET - 4, cy);
     ctx.textAlign = 'left';
     ctx.fillText('Positive', cx + AXIS_INSET + 4, cy);
 
-    // 4) hover “lift” on the active tile
+    // 3) hover lift for active tile
     if (hoveredKey) {
       const tile = tiles.find(t => t.key === hoveredKey);
       if (tile) {
         const r = Math.min(tile.w, tile.h) * 0.2;
         const scale = 1.04;
-
         ctx.save();
         ctx.translate(tile.cx, tile.cy);
         ctx.scale(scale, scale);
         ctx.translate(-tile.cx, -tile.cy);
-
         pathRoundRect(ctx, tile.x, tile.y, tile.w, tile.h, r);
-        ctx.fillStyle = 'rgba(255,255,255,0.12)'; // subtle lift
+        ctx.fillStyle = 'rgba(255,255,255,0.12)';
         ctx.fill();
         ctx.strokeStyle = '#111';
         ctx.lineWidth = 2;
         ctx.stroke();
-
-        // soft gloss
-        const grad = ctx.createLinearGradient(tile.x, tile.y, tile.x, tile.y + tile.h);
-        grad.addColorStop(0, 'rgba(255,255,255,0.25)');
-        grad.addColorStop(0.5, 'rgba(255,255,255,0.10)');
-        grad.addColorStop(1, 'rgba(255,255,255,0.00)');
-        ctx.fillStyle = grad;
-        ctx.fill();
-
         ctx.restore();
-
         canvas.style.cursor = 'pointer';
       }
     } else {
       canvas.style.cursor = 'default';
     }
 
-    // 5) emotion labels (centered in each tile)
+    // 4) emotion labels in tiles
     if (showEmotionLabels) {
       ctx.font = '600 13px Helvetica, Arial, sans-serif';
       ctx.fillStyle = '#222';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      for (const tile of tiles) {
-        ctx.fillText(tile.label, tile.cx, tile.cy);
-      }
+      for (const tile of tiles) ctx.fillText(tile.label, tile.cx, tile.cy);
     }
 
-    // 6) dots on top (drop shadow; personal dot halo/accent)
+    // 5) dots with drop shadow; self = bigger
     for (const d of dots) {
-      const x = ((d.valence + 1) / 2) * GRID.gridW + GRID.gridX;
-      const y = (1 - (d.arousal + 1) / 2) * GRID.gridH + GRID.gridY;
+      const x = v2x(d.valence);
+      const y = a2y(d.arousal);
 
-      // find the tile under this point for color
+      // color from the underlying tile (or use provided color)
+      let fill = d.color ?? '#3b82f6';
       const t = tileAt(x, y);
-      let fill = '#3b82f6'; // fallback
       if (t) {
-        const u = t.col / Math.max(1, GRID.COLS - 1);
-        const v = t.row / Math.max(1, GRID.ROWS - 1);
-        const UL: [number, number, number] = [255, 0, 0];
-        const UR: [number, number, number] = [255, 255, 0];
-        const LL: [number, number, number] = [0, 0, 255];
-        const LR: [number, number, number] = [0, 255, 0];
-
-        const left  = lerp3(UL, LL, v);
-        const right = lerp3(UR, LR, v);
-        const c = lerp3(left, right, u);
-        fill = rgb(c[0], c[1], c[2]);
+        const c = tileColorAt(t.col, t.row, GRID.COLS, GRID.ROWS); // ← your helper
+        fill = `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
       }
 
       const isMine = currentMemberId && d.member_id === currentMemberId;
-      const radius = isMine ? 9 : 6;
+      const radius = isMine ? 9.5 : 7.5; // bigger for self
 
-      // Personal halo (draw first, under the dot)
-      if (isMine) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(x, y, radius + 5, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255,255,255,0.35)'; // soft white halo
-        ctx.fill();
-        ctx.restore();
-      }
-
-      // Drop shadow (instead of thick rim)
+      // drop shadow
       ctx.save();
       ctx.shadowColor = 'rgba(0,0,0,0.25)';
-      ctx.shadowBlur = 6;
-      ctx.shadowOffsetX = 0;
-      ctx.shadowOffsetY = 2;
+      ctx.shadowBlur = isMine ? 8 : 6;
+      ctx.shadowOffsetY = 1.5;
 
-      // Main filled dot
+      // main fill (alpha a bit stronger for self)
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.fillStyle = fill;
-      ctx.globalAlpha = isMine ? 0.7 : 0.4; // personal dot a touch stronger
+      ctx.globalAlpha = isMine ? 0.55 : 0.40;
       ctx.fill();
 
-      // Optional thin, soft outline for crispness (no harsh black)
-      ctx.shadowBlur = 0;
+      // thin soft outline
       ctx.globalAlpha = 1;
+      ctx.shadowBlur = 0;
       ctx.lineWidth = 1;
-      ctx.strokeStyle = 'rgba(255,255,255,0.85)'; // soft white hairline
+      ctx.strokeStyle = 'rgba(31,41,55,0.55)';
       ctx.stroke();
       ctx.restore();
     }
 
-    // (optional) tiny cursor ring if we want to use pointerPx
-    if (pointerPx) {
+    // 5.1) hover ring around the active dot (mouse hover or tap)
+    if (hoveredDot) {
       ctx.beginPath();
-      ctx.arc(pointerPx.x, pointerPx.y, 5, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-      ctx.lineWidth = 1;
+      ctx.arc(hoveredDot.x, hoveredDot.y, hoveredDot.r + 3, 0, Math.PI * 2);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#111'; // subtle dark ring
       ctx.stroke();
     }
-  }, [width, height, GRID, tiles, dots, hoveredKey, showEmotionLabels, pointerPx]);
+
+    // Preview dot while the inline editor is open
+    if (editing) {
+      const px = editing.x;
+      const py = editing.y;      // ← use the true click Y
+    
+      let fill = '#3b82f6';
+      const t = tileAt(px, py);
+      if (t) {
+        const c = tileColorAt(t.col, t.row, GRID.COLS, GRID.ROWS);
+        fill = `rgb(${c[0]|0},${c[1]|0},${c[2]|0})`;
+      }
+    
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.20)';
+      ctx.shadowBlur = 6;
+      ctx.shadowOffsetY = 1;
+    
+      ctx.beginPath();
+      ctx.arc(px, py, 8.5, 0, Math.PI * 2);
+      ctx.fillStyle = fill;
+      ctx.globalAlpha = 0.35;
+      ctx.fill();
+    
+      ctx.globalAlpha = 1;
+      ctx.shadowBlur = 0;
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(31,41,55,0.45)';
+      ctx.stroke();
+      ctx.restore();
+    }
+
+  }, [width, height, GRID, tiles, dots, hoveredKey, showEmotionLabels, pointerPx, editing, currentMemberId]);
 
   // ---------- hit-testing + events ----------
   function tileAt(x: number, y: number): Tile | null {
@@ -307,11 +327,52 @@ export default function MoodMapCanvas({
     return null;
   }
 
+  function dotAt(x: number, y: number) {
+    const R = 12; // hit radius
+    for (let i = dots.length - 1; i >= 0; i--) {
+      const d = dots[i];
+      const dx = v2x(d.valence);
+      const dy = a2y(d.arousal);
+      if (Math.hypot(x - dx, y - dy) <= R) {
+        return { dot: d, px: { x: dx, y: dy } };
+      }
+    }
+    return null;
+  }
+
   function handlePointerMove(e: React.PointerEvent<HTMLCanvasElement>) {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     setPointerPx({ x, y });
+  
+    // Try dot first: show tooltip + ring if it has a label
+    const hit = dotAt(x, y);
+    if (hit) {
+      const isMine = currentMemberId && hit.dot.member_id === currentMemberId;
+      const r = isMine ? 9.5 : 7.5;
+      setHoveredDot({ x: hit.px.x, y: hit.px.y, r });
+  
+      if (hit.dot.label) {
+        setDotTip(prev =>
+          prev &&
+          Math.abs(prev.x - hit.px.x) < 0.5 &&
+          Math.abs(prev.y - hit.px.y) < 0.5 &&
+          prev.text === hit.dot.label
+            ? prev
+            : { x: hit.px.x, y: hit.px.y - 16, text: hit.dot.label! }
+        );
+      } else {
+        setDotTip(null);
+      }
+      setHoveredKey(null); // don't lift a tile when over a dot
+      return;
+    }
+  
+    // No dot → clear ring & tooltip, then do tile hover
+    setHoveredDot(null);
+    setDotTip(null);
+  
     const t = tileAt(x, y);
     setHoveredKey(t?.key ?? null);
   }
@@ -319,30 +380,164 @@ export default function MoodMapCanvas({
   function handlePointerLeave() {
     setPointerPx(null);
     setHoveredKey(null);
+    setDotTip(null);
+    setHoveredDot(null);
   }
 
   function handleClick(e: React.MouseEvent<HTMLCanvasElement>) {
-    if (!onSelect) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+  
+    // Tapping a dot: show label + ring
+    const hit = dotAt(x, y);
+    if (hit) {
+      const isMine = currentMemberId && hit.dot.member_id === currentMemberId;
+      const r = isMine ? 9.5 : 7.5;
+      setHoveredDot({ x: hit.px.x, y: hit.px.y, r });
+  
+      if (hit.dot.label) {
+        setDotTip({ x: hit.px.x, y: hit.px.y - 16, text: hit.dot.label });
+      }
+      return;
+    }
+  
+    // Otherwise open the label editor (your existing logic)
     const t = tileAt(x, y);
-    if (!t) return;
-    onSelect({
-      emotionKey: t.key,
+    if (!t || !onSelect) return;
+  
+    setDotTip(null);
+    setHoveredKey(null);
+    setHoveredDot(null);
+  
+    setEditing({
+      x,
+      y: y,
       valence: invV(x),
       arousal: invA(y),
+      emotionKey: t.key,
+      text: '',
     });
   }
 
+  function submitEdit() {
+    if (!editing || !onSelect) return;
+    const label = editing.text.trim() || undefined;
+    onSelect({
+      emotionKey: editing.emotionKey,
+      valence: editing.valence,
+      arousal: editing.arousal,
+      feelingLabel: label,
+    });
+    setEditing(null);
+  }
+  
+  function cancelEdit() {
+    setEditing(null);
+  }
+
   return (
-    <canvas
-      ref={canvasRef}
-      style={{ width, height, display: 'block', borderRadius: 24, background: '#fff' }}
-      onPointerMove={handlePointerMove}
-      onPointerLeave={handlePointerLeave}
-      onClick={handleClick}
-    />
+    <div ref={wrapRef} style={{ position: 'relative', width, height }}>
+      <canvas
+        ref={canvasRef}
+        style={{ width, height, display: 'block', borderRadius: 24, background: '#fff' }}
+        onPointerMove={handlePointerMove}
+        onPointerLeave={handlePointerLeave}
+        onClick={handleClick}
+      />
+
+
+      {editing && (
+        <div
+          style={{
+            position: 'absolute',
+            left: editing.x,
+            top: editing.y - 16,
+            transform: 'translate(-50%, -100%)',
+            display: 'flex',
+            gap: 4,
+            background: 'rgba(255,255,255,0.92)',
+            padding: '4px 6px',
+            borderRadius: 9999,
+            border: '1px solid #333',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            zIndex: 50,
+          }}
+        >
+          <input
+            autoFocus
+            value={editing.text}
+            onChange={e => setEditing(ed => ed ? { ...ed, text: e.target.value } : ed)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') submitEdit();
+              if (e.key === 'Escape') cancelEdit();
+            }}
+            placeholder="Say more (optional)"
+            style={{
+              fontSize: '0.9em',
+              padding: '4px 6px',
+              width: 140,       // tweak width here
+              height: 28,
+              border: '1px solid #ccc',
+              borderRadius: 9999,
+              outline: 'none',
+            }}
+          />
+          <button
+            onClick={submitEdit}
+            aria-label="Save"
+            style={{
+              fontSize: '0.9em',
+              padding: '4px 8px',
+              height: 28,
+              cursor: 'pointer',
+              borderRadius: 9999,
+              border: '1px solid #ccc',
+              background: '#fff',
+            }}
+          >
+            ✓
+          </button>
+          <button
+            onClick={cancelEdit}
+            aria-label="Cancel"
+            style={{
+              fontSize: '0.9em',
+              padding: '4px 8px',
+              height: 28,
+              cursor: 'pointer',
+              borderRadius: 9999,
+              border: '1px solid #ccc',
+              background: '#fff',
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {dotTip && (
+        <div
+          style={{
+            position: 'absolute',
+            left: dotTip.x,
+            top: dotTip.y,
+            transform: 'translate(-50%,-100%)',
+            background: '#fff',
+            border: '1px solid #333',
+            borderRadius: 9999,
+            padding: '4px 10px',
+            fontSize: 12,
+            fontFamily: 'Helvetica, Arial, sans-serif',
+            boxShadow: '0 6px 16px rgba(0,0,0,0.18)',
+            pointerEvents: 'none',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {dotTip.text}
+        </div>
+      )}
+    </div>
   );
 }
 
