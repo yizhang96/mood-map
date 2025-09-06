@@ -12,11 +12,6 @@ function slugify(s: string) {
     .slice(0, 48);
 }
 
-const palette = {
-  line: '#e5e7eb',        // gray-200
-  accent: '#4b5563',      // charcoal
-};
-
 export default function NewRoomPage() {
   const [title, setTitle] = useState('');
   const [passcode, setPasscode] = useState('');
